@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fuel Network Skills"
+  short_description: "Build, review, and operate Fuel projects"
+  default_prompt: "Use $fuel-network-skills to inspect this Fuel project and apply the smallest relevant module set."

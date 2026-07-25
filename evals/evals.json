@@ -1,0 +1,65 @@
+{
+  "skill_name": "fuel-network-skills",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Inspect this Sway contract workspace before I change its ABI. Tell me which Fuel versions and generated artifacts constrain the work.",
+      "expected_output": "Run the network-free preflight helper first, report project-local toolchain and SDK pins, and load only the toolchain, Sway, and artifact-relevant guidance.",
+      "files": [],
+      "expectations": [
+        "Runs scripts/fuel_preflight.py against the project before proposing version-sensitive changes",
+        "Treats fuel-toolchain.toml, Forc.toml, Forc.lock, SDK lockfiles, ABIs, and bytecode as primary local evidence",
+        "Reports discovered versions and artifacts without inventing a compatibility set",
+        "Keeps the inspection read-only"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review this Fuel predicate wallet flow. It assumes the account submitting the transaction is authorized to spend.",
+      "expected_output": "Review the predicate through architecture, transaction, and security modules; explain that submission identity is not predicate authorization and trace the actual signed or committed authorization data.",
+      "files": [],
+      "expectations": [
+        "Loads program architecture, transactions and wallets, and security review guidance",
+        "States that anyone may submit a transaction satisfying a predicate",
+        "Traces authorization, transaction binding, replay protection, and asset conservation",
+        "Reports findings by severity with an exploit or failure path and minimal remediation"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What versions should I target for a Fuel mainnet upgrade today, and can you deploy the result?",
+      "expected_output": "Resolve live primary version evidence, distinguish the mainnet-distributed channel from newest upstream releases, prepare a migration/deployment plan, and require explicit deployment authority before any network mutation.",
+      "files": [],
+      "expectations": [
+        "Reads source-policy guidance and uses scripts/resolve_fuel_versions.py for current version claims",
+        "Keeps the mainnet channel and newest upstream release as separate baselines",
+        "Includes a from/to compatibility matrix and rollback boundary",
+        "Does not deploy, sign, fund, or submit without explicit authorization"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Minimize this Fuel contract's gas and bytecode size as aggressively as possible. I accept lower readability, but preserve its authorization guarantees.",
+      "expected_output": "Use performance, maximum-optimization, testing, and security guidance; measure changes against a readable oracle and preserve authorization and asset invariants.",
+      "files": [],
+      "expectations": [
+        "Loads maximum-optimization only because the user explicitly requested aggressive optimization",
+        "Establishes measured gas and bytecode baselines before optimizing",
+        "Retains or constructs a readable reference implementation or oracle",
+        "Treats authorization, replay, asset conservation, and trap behavior as non-removable constraints"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Compare the old and new Fuel build outputs and tell me whether the ABI, bytecode, IDs, storage slots, or generated bindings changed.",
+      "expected_output": "Run the artifact diff helper on the two trees, interpret its structured output and exit status, and summarize compatibility-relevant changes.",
+      "files": [],
+      "expectations": [
+        "Uses scripts/diff_fuel_artifacts.py with the old and new artifact paths",
+        "Covers ABI JSON, bytecode, storage or configurable data, roots or IDs, and generated Rust or TypeScript bindings",
+        "Treats exit status 1 as differences and exit status 2 as an operational error",
+        "Does not modify either artifact tree"
+      ]
+    }
+  ]
+}
