@@ -1,7 +1,8 @@
 # Toolchain and packages
 
-Verified against Sway `v0.71.2` and the live channel research snapshot on
-2026-07-23. Run the version resolver before choosing a current baseline.
+Verified against Sway `v0.71.2`, Fuelup sources at commit `8d05e80`
+(2026-04-07), and the live channel research snapshot on 2026-07-23. Run the
+version resolver before choosing a current baseline.
 
 - [Select and inspect tooling](#select-and-inspect-tooling)
 - [Create packages and workspaces](#create-packages-and-workspaces)
@@ -12,9 +13,21 @@ Verified against Sway `v0.71.2` and the live channel research snapshot on
 
 ## Select and inspect tooling
 
-Install Fuelup only with user authorization and according to local
-supply-chain policy. The canonical installer is `https://install.fuel.network/`.
-Prefer named channels:
+Fuelup mechanics below verified against the `FuelLabs/fuelup` sources at
+commit `8d05e80` (2026-04-07). Install Fuelup only with user authorization
+and according to local supply-chain policy:
+
+```sh
+curl -fsSL https://install.fuel.network/ | sh
+```
+
+The installer needs `git` and `curl`, places `fuelup` in `~/.fuelup/bin`
+(override with `FUELUP_DIR`), and offers to modify `PATH` — pass
+`--no-modify-path` to skip, then export the path yourself. It warns when
+cargo-installed `forc*` binaries in `~/.cargo/bin` would shadow the fuelup
+proxies; remove those to avoid split-version confusion.
+
+Then select a toolchain and inspect it:
 
 ```sh
 fuelup toolchain install mainnet
@@ -28,11 +41,27 @@ forc plugins
 Use `testnet` when that is the target. Treat `latest` as an alias whose live
 meaning must be resolved. Treat `nightly` as experimental.
 
-Core Forc, `fmt`, `lsp`, `doc`, `debug`, `migrate`, `tx` and `publish` ship
-with the Sway repository/toolchain. Network-facing `call`, `deploy`, `run`,
-`submit`, `node`, `crypto` and `wallet` families can come from independently
-released plugins in `FuelLabs/forc`. Check the active plugin list and each
-command's `--help`.
+Everyday fuelup surface: `fuelup component add <name>[@<version>]` /
+`remove` / `list` (pin or trim components inside a toolchain),
+`fuelup toolchain new <name>` (custom toolchain), `toolchain uninstall`,
+`toolchain export`, `fuelup check` (compare installed versions against the
+channel), `fuelup update` (update installed channel toolchains),
+`fuelup self update` / `self uninstall`, `fuelup completions`.
+
+Channels distribute, per `components.toml`: core `forc` with `forc-doc`,
+`forc-fmt`, `forc-lsp`, `forc-debug`, `forc-migrate`, `forc-tx`,
+`forc-publish` (Sway repo); the independently released `forc-crypto`,
+`forc-client` (deploy/run/submit), `forc-node`, `forc-wallet`
+(`FuelLabs/forc` repo); and `fuel-core` plus `fuel-core-keygen`. So the
+network-facing plugin families install through the same channel or
+`fuelup component add` — but their versions move independently of the Sway
+tag; check each command's `--help`.
+
+A project-root `fuel-toolchain.toml` overrides the default toolchain, and
+the fuelup proxy **auto-installs the declared toolchain and pinned
+components on the first `forc` invocation** if missing. That is a
+network-and-install side effect of merely building — relevant when
+authorization or air-gapping matters.
 
 ## Create packages and workspaces
 
@@ -83,6 +112,37 @@ Treat `forc-version` as a minimum, not a full environment lock. Keep
 `implicit-std = true` unless there is a reviewed no-std requirement. Pin Git
 dependencies by immutable revision or controlled release tag. Record contract
 dependency salts because they affect IDs.
+
+### Complete manifest surface
+
+Verified against `forc-pkg/src/manifest/` at Sway `v0.71.2`. All keys are
+kebab-case. Package `Forc.toml` sections and fields:
+
+- `[project]` — required: `name`, `license`. Optional: `authors`, `version`,
+  `description`, `organization`, `homepage`, `repository`, `documentation`,
+  `categories`, `keywords`, `entry` (default `main.sw`), `implicit-std`,
+  `forc-version`, `experimental` (map of feature name to bool), `metadata`
+  (free-form table), `force-dbg-in-release`.
+- `[dependencies]` — `pkg = "<version>"` or a detail table with `version`,
+  `namespace` (registry), `path`, `git` plus one of `branch`/`tag`/`rev`,
+  `package` (rename), `ipfs`.
+- `[contract-dependencies]` — same source keys plus required `salt`
+  (32-byte hex).
+- `[patch.<source>]` — map of dependency name to replacement source; also
+  valid in a workspace root manifest.
+- `[network]` — `url` for network-facing tooling.
+- `[build-profile.<name>]` — `debug` and `release` exist implicitly
+  (`opt-level` 0/1). Fields mirror compiler flags: `print-ast`, `print-ir`,
+  `verify-ir`, `print-asm`, `print-bytecode`, `print-bytecode-spans`,
+  `print-dca-graph`, `print-dca-graph-url-format`, `terse`, `time-phases`,
+  `profile`, `metrics-outfile`, `include-tests`, `error-on-warnings`,
+  `reverse-results`, `optimization-level`, `backtrace`, `dump`.
+- `[proxy]` — `enabled: bool` and optional `address`. When enabled, a
+  compatible `forc deploy` plugin deploys/updates an SRC-14 proxy pointing at
+  the new contract; the manifest only declares intent. Verify behavior with
+  the installed plugin's `--help`.
+- Workspace root manifest: `[workspace]` with `members` and optional
+  `metadata`, plus optional `[patch.<source>]`. No `[project]`.
 
 ## Change dependencies deliberately
 

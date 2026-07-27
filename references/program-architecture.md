@@ -113,6 +113,13 @@ A sequential nonce+epoch may subsume a separate consumed map in a strictly
 atomic single-action model, but do not delete replay state until concurrent,
 reentrant, batched, resumable and non-sequential cases are proven equivalent.
 
+When comparing stateful, stateless and hybrid placements, hold constant the
+owner/recipient/asset/amount, validity window and epoch, replay strength,
+chain/application/script/contract domains, accepted transaction set, and
+recovery behavior. Account for contract deployment, storage I/O, predicate
+code/data shipped per spend, contract inputs/outputs, wallet resource
+selection, and failure liveness — never only unit-test gas.
+
 ## Preserve safe concurrency
 
 Disjoint UTXOs and write sets can enable parallel validation; transactions that
@@ -137,6 +144,6 @@ Make the ordinary architecture efficient without obscuring it:
 - isolate any asm or compiler-sensitive kernel behind a typed Sway interface
   and retain a readable oracle.
 
-Use [auto-research-findings.md](auto-research-findings.md) for measured
-architecture/security evidence and [maximum-optimization.md](maximum-optimization.md)
-only for an explicit maximum-optimization request.
+Use [performance.md](performance.md) for the measured evidence behind these
+defaults and [maximum-optimization.md](maximum-optimization.md) only for an
+explicit maximum-optimization request.

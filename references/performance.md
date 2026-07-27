@@ -1,5 +1,7 @@
 # Performance
 
+Measured figures verified on pinned forc `0.71.2` release builds
+(434-iteration research corpus, 2026-07 snapshot).
 Measure the release artifact and final transaction against the target node.
 Never remove authorization, asset validation, overflow checks or reentrancy
 protection to improve a benchmark.
@@ -13,6 +15,7 @@ protection to improve a benchmark.
 - [Count transaction-amplified work](#count-transaction-amplified-work)
 - [Maintain a regression baseline](#maintain-a-regression-baseline)
 - [Escalate only for maximum optimization](#escalate-only-for-maximum-optimization)
+- [Locate the raw corpus](#locate-the-raw-corpus)
 
 ## Default to readable optimization
 
@@ -31,9 +34,13 @@ Prefer the clearest form that removes real work. Use this order:
 Do not default to full unrolling, raw asm, wide commitment rewrites, branchy
 strength reduction, or code-layout tricks. Load
 [maximum-optimization.md](maximum-optimization.md) only when the user asks for
-maximum gas/size or accepts reduced readability. Read
-[auto-research-findings.md](auto-research-findings.md) for the exact measured
-evidence behind these defaults.
+maximum gas/size or accepts reduced readability.
+
+The measurements in this module come from a 434-iteration research corpus on
+pinned `forc 0.71.2` release builds (see [Locate the raw
+corpus](#locate-the-raw-corpus)). Treat them as strong fixture/compiler
+evidence for ranking opportunities, not as target-node constants; re-measure
+on the project pin.
 
 ## Attribute cost by layer
 
@@ -53,20 +60,38 @@ Reducing source lines is not evidence of lower cost.
 For forc 0.71.2 research fixtures, prioritize:
 
 - **Storage work:** repeated scalar loop reads cost roughly 170-196 gas each;
-  a repeated full `Position` read cost about 830 gas. Read once/write once when
-  semantics allow.
+  a repeated full `Position` read cost about 830 gas; a re-read epoch cost
+  1,586 gas; duplicate bridge message reads cost roughly 7,000 gas. Read
+  once/write once when semantics allow.
+- **Storage writes:** a write inside a 365-round loop cost +122,304 gas
+  versus writing once after; unconditionally writing back unchanged
+  aggregates cost +4,836 gas. Write only changed state, outside loops.
 - **Failure position:** early malformed/expired entrypoint rejection saved
-  about 1,250-3,960 gas by avoiding witness/hash/bounded work.
-- **Transaction getters:** repeated asset/transaction/count getters survived
-  release optimization; remove call sites or use enum dispatch rather than
-  adding speculative locals.
+  about 1,250-3,960 gas by avoiding witness/hash/bounded work. Early
+  rejection is safe only when the accepted transaction set, required
+  accounting/authorization, and caller-observable failure metadata are
+  unchanged, replay/mutation order is preserved, and no constant-work policy
+  forbids variable-time rejection.
+- **Transaction getters:** repeated getters survived release optimization —
+  a duplicate `input_asset_id` cost +429 gas, recomputing `tx_id()` per
+  input +53 gas; caching complete entrypoint counts saved 21-156 gas.
+  Remove call sites or use enum dispatch rather than adding speculative
+  locals.
 - **Hash rounds:** one complete streamed commitment beat multi-hash trees by
-  thousands of gas and bytes when every field/domain remained intact.
+  thousands of gas and bytes when every field/domain remained intact. One
+  redundant hashed word cost about 123 gas/round; a whole SHA invocation
+  roughly 277-292 gas.
 - **Structural size:** remove a whole accessor/helper block, merge equivalent
   guards, use `if let` for measured predicate decode shapes, and explicitly
-  match `Option<bool>` replay defaults.
-- **Sparse work:** iterate set bits or stop a scan when remaining work is empty
-  instead of always traversing a large fixed domain.
+  match `Option<bool>` replay defaults. Bytecode moves in 8-byte quanta —
+  target a whole call site or block; sub-word cleanups often land at 0 B.
+- **Sparse work:** iterate set bits (a Kernighan popcount saved 441 gas over
+  a fixed 64-round count) or stop a scan when remaining work is empty
+  (-468 gas) instead of always traversing a large fixed domain. Eliminate
+  iterations; do not replace cheap forward indexing with extra counters or
+  branches (a maintained counter regressed 10 gas).
+- **Allocation:** materializing a `Vec` for eight fixed scores cost
+  +616 gas; keep small fixed arrays.
 
 Short-circuit order depends on real intrinsic cost and input selectivity.
 Owner-first, asset-first and type-first produced different results in different
@@ -86,12 +111,15 @@ Avoid by default:
 - `Vec` materialization for tiny fixed arrays;
 - add/branch recurrences replacing cheap constant multiply/modulo;
 - redundant preflight passes when the existing atomic transition enforces the
-  invariant;
+  invariant (a split frozen-state gate cost +773 gas/+120 B; duplicate
+  preflights +6-16 gas and +104-176 B each);
 - partial unrolling, which often pays nearly full byte cost for a small gas
   gain;
 - full live-contract unrolling without an explicit size tradeoff;
 - precomputed wide literals merely to avoid a constant hash;
 - added hash nesting or dropped commitment fields;
+- new generic instantiations and wide tuple encoders, which can add
+  substantial monomorphized code;
 - optimization claims based only on total gas or source line count.
 
 Treat exact-zero deltas as evidence. Determine whether the source was
@@ -113,6 +141,16 @@ forc parse-bytecode out/release/<package>.bin
 
 Verify flags on the active compiler. Record bytecode hash/size, ABI, storage,
 configurable offsets and contract ID.
+
+Check metric reachability before interpreting any delta: helper-only tests
+can move gas while deployable bytes stay unchanged; ABI/storage/entrypoint
+edits can move bytes while a detached helper bench reports zero gas; a zero
+gas delta does not make an unexecuted path free; a zero byte delta can mean
+test-only/dead code or alignment padding. In the research corpus, an
+optimization was accepted only with a total-metric improvement, no individual
+benchmark regression, no aggregate byte growth (gas tracks) or individual
+artifact growth (size tracks), and unchanged ABI/storage artifacts — hold
+production changes to the same bar.
 
 ## Optimize storage and collections
 
@@ -188,3 +226,15 @@ prioritizes maximum optimization:
 
 Use [maximum-optimization.md](maximum-optimization.md) for the full unrolling,
 assembly, immediate-width, register, and aggressive codegen workflow.
+
+## Locate the raw corpus
+
+The measured numbers in this skill come from a 434-iteration
+champion/challenger and observational corpus (order book, collateralized
+lending, cross-domain bridge, plus 16 observational tracks) on pinned
+`forc 0.71.2`. When a claim needs its full caveats, the corpus lives in the
+fuel research repository (skip if that project is not checked out):
+`auto_research_results.md` at the repo root consolidates all runs; each track
+keeps an `advice.md` under `auto_research/optimizations/...` or
+`auto_research/experiments/...`; the authoritative raw record is that track's
+`research/iterations/NNNN.json` and `NNNN.md` journal.

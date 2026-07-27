@@ -1,7 +1,9 @@
 # Migrations
 
-Treat Sway, core Forc, independent plugins, Fuel Core, fuels-rs, fuels-ts,
-libraries, standards and network activation as separate release tracks.
+Version-specific watch items verified at the 2026-07-23 snapshot; measured
+guard costs are forc `0.71.2` fixture evidence. Treat Sway, core Forc,
+independent plugins, Fuel Core, fuels-rs, fuels-ts, libraries, standards and
+network activation as separate release tracks.
 
 - [Establish from/to matrices](#establish-fromto-matrices)
 - [Migrate in controlled stages](#migrate-in-controlled-stages)
@@ -83,8 +85,12 @@ Do not infer crash safety from a single call. Rehearse:
 - stale clients and adapters;
 - failed finalization and rollback.
 
-Use [auto-research-findings.md](auto-research-findings.md) for exact migration
-measurements and hash-encoding constraints.
+Measure every snapshot/reuse candidate independently — results varied from
+-63 gas (predicate transaction-shape snapshot) through 0/-56 B (active
+version) to +8 gas (script transaction-ID snapshot) in the same fixture
+family. Reducing plan/receipt hash rounds saved roughly 277-292 gas per SHA
+invocation, but wide flat tuples may not implement `Hash` — nest or stream
+per [maximum-optimization.md](maximum-optimization.md).
 
 ## Read changelogs by affected boundary
 

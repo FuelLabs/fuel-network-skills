@@ -56,6 +56,8 @@ interface supplies a secure implementation. Keep the two catalogs distinct:
 - `sway-libs` provides implementation libraries, not standards: asset,
   ownership, admin, pausable, reentrancy, upgradability and related utilities.
   Review the exact pinned implementation, configuration and audit scope.
+  Verified API signatures and their fixed storage slots are in
+  [sway-libs.md](sway-libs.md).
 
 In the reviewed SRC catalog and sway-libs implementation, ownership transfer
 is one-step and SRC-5 exposes only `owner()`. Prefer a two-step

@@ -1,7 +1,11 @@
 # Sway authoring
 
 Verified for Sway `v0.71.2`. Inspect the project's compiler pin and versioned
-reference before applying syntax to another release.
+reference before applying syntax to another release. This module covers how
+to write good Sway; for definitions load the companion references:
+[sway-language.md](sway-language.md) (syntax, types, traits, attributes),
+[storage.md](storage.md), [stdlib.md](stdlib.md), and
+[fuelvm-assembly.md](fuelvm-assembly.md).
 
 - [Structure programs explicitly](#structure-programs-explicitly)
 - [Make effects visible](#make-effects-visible)
@@ -99,8 +103,8 @@ Use measured compact forms only in the matching context:
 Do not introduce locals, helper boundaries, branchy strength reduction,
 partial/full unrolling or asm merely because the source looks lower-level.
 Forc 0.71.2 frequently canonicalized simple source changes and sometimes made
-manual forms worse. Read [auto-research-findings.md](auto-research-findings.md)
-for exact evidence.
+manual forms worse. Read [performance.md](performance.md) for the measured
+evidence.
 
 ## Isolate low-level code
 
@@ -118,8 +122,10 @@ exact pinned compiler.
 
 ### Author raw FuelVM assembly
 
-Check pinned examples from the exact `FuelLabs/sway` release used by the
-project. In an available release checkout, inspect:
+Read [fuelvm-assembly.md](fuelvm-assembly.md) for the verified register
+model, memory model, opcode set, GTF table, predicate restrictions and Sway
+`asm`-block syntax rules. For behavior on a different pinned release, check
+examples from the exact `FuelLabs/sway` checkout:
 
 - `test/src/e2e_vm_tests/test_programs/should_pass/language/asm_expr_basic/`
 - `test/src/ir_generation/tests/`
@@ -152,7 +158,11 @@ For forc 0.71.2 specifically, wide flat 11/12/13-field hash tuples lacked the
 needed `Hash` implementation in measured attempts, direct `Output`
 hash/comparison forms failed, and expression-position bool-to-u64 `as` failed.
 Use nested tuples/`Hasher`, explicit output discriminants and a typed
-`if`-expression respectively; re-check on another compiler.
+`if`-expression respectively; re-check on another compiler. Also measured
+there: `mut` in a match pattern did not compile (shadow into a mutable local
+inside the arm); adding `log` or a typed `require` changes ABI logged types;
+and smaller integer source types do not shrink FuelVM registers or artifacts
+and can add conversions.
 
 ## Control experimental features
 

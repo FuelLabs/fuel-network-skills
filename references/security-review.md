@@ -1,8 +1,10 @@
 # Fuel and Sway security review
 
-Freeze the exact commit, toolchain, SDK/node matrix, target chain and release
-artifacts before reviewing. Historical reports are scoped evidence, not proof
-of a current vulnerability.
+Measured gas/byte figures verified on forc `0.71.2` research fixtures;
+incident and audit references are dated primary records. Freeze the exact
+commit, toolchain, SDK/node matrix, target chain and release artifacts before
+reviewing. Historical reports are scoped evidence, not proof of a current
+vulnerability.
 
 - [Review in invariant order](#review-in-invariant-order)
 - [Audit predicates as complete locks](#audit-predicates-as-complete-locks)
@@ -100,10 +102,16 @@ prevent one output from satisfying multiple controlled inputs.
 
 A hash tested only for `!= b256::zero()` is not authentication. Compare it
 with an authenticated expectation or use it in a replay/authorization
-decision. Treat the measured gas/byte cost of domain, chain, script, type and
-witness fields as the price of the security property, not removable overhead.
-Read [auto-research-findings.md](auto-research-findings.md) for measured costs
-and encoding pitfalls.
+decision — one such dead check occupied 456 B while hiding that the
+purported executor was never enforced. Treat the measured gas/byte cost of
+domain, chain, script, type and witness fields as the price of the security
+property, not removable overhead; the per-dimension price table is in
+[transactions-and-wallets.md](transactions-and-wallets.md).
+
+Reject registration of intents that local execution can never satisfy. When
+a registry replay key omitted the chain that execution checked, an
+unexecutable cross-chain intent could still consume the local
+`(maker, domain, nonce)` key; rejecting it at registration cost 32 B.
 
 ## Treat calls and storage as adversarial
 
@@ -152,7 +160,9 @@ receipts and storage growth. Compare:
 Place a cheap, independent reject before hashes, witness scans, storage reads
 or bounded kernels when the accepted transaction set is identical. Entrypoint
 research saved about 1,250 gas on malformed transaction-shape gates and
-3,832-3,960 gas on expired oracle lanes by avoiding bounded work.
+3,832-3,960 gas on expired oracle lanes by avoiding bounded work. Do not
+give failed requests a more favorable refund/retry policy than successful
+ones unless that asymmetry is intentional.
 
 Do not infer forwarded-gas, fee/refund, receipt-limit, callback-depth or
 cross-contract rollback behavior from a detached helper or single-contract
@@ -297,6 +307,10 @@ proof of safety.
   against escrowed assets.
 - Delisting or removing an asset in a way that freezes user withdrawals.
 - Refund state recorded around a fallible call so that failure strands funds.
+- Escrow/refund logic assuming a script revert un-spends inputs or suppresses
+  fixed `Coin` outputs — a reverted transaction is still included, spends its
+  inputs, creates declared `Coin` outputs and pays fees; only contract
+  state/balances and `Variable` outputs roll back.
 - Signature missing chain/domain/nonce/call scope.
 - Nightly/deprecated opcode, storage intrinsic or encoding copied into release
   code.

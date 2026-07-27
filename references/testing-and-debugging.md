@@ -80,7 +80,9 @@ Add SDK/node fixtures when a claim involves:
 - actual fees/refunds or consensus gas;
 - forwarded gas, callback depth, receipts or multi-contract rollback;
 - concurrent storage/UTXO conflicts;
-- process restart and multi-transaction migration recovery.
+- process restart and multi-transaction migration recovery;
+- signer cryptographic verification and uniqueness;
+- duplicate input/output matching across all transaction shapes.
 
 For asm, unrolling or compiler-sensitive code, test overflow/trap order,
 immediate boundaries, shifts/divisors, pointers and the readable Sway oracle.

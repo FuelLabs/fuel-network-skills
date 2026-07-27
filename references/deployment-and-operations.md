@@ -45,6 +45,55 @@ forc submit --help
 Use installed help rather than copying stable documentation flags. Do not
 assume a Sway tag supplies the matching client/node plugin.
 
+For bytecode above the node's contract-size limit, the protocol-level path
+(verified at `fuel-tx v0.66.4`) is: upload chunks as Blob transactions
+(`blob_id = sha256(data)`), then deploy a small loader contract that
+`LDC`-loads blob payloads (mode 1) at runtime — `BSIZ`/`BLDD` inspect blobs;
+see [abi-and-encoding.md](abi-and-encoding.md) and
+[fuelvm-assembly.md](fuelvm-assembly.md). Deploy tooling can automate
+chunking; verify the installed `forc deploy`/SDK behavior and record every
+blob ID in the deployment unit. For SRC-14 proxy deploys, the `[proxy]`
+manifest section declares intent
+([toolchain-and-packages.md](toolchain-and-packages.md)).
+
+## Query the node over GraphQL
+
+Verified against the Fuel Core `v0.47.1` schema (`crates/client/assets/
+schema.sdl`); regenerate expectations from the target node because fields
+change between minors. Endpoints: HTTP `POST /v1/graphql`, subscriptions at
+`/v1/graphql-sub`. Key root fields:
+
+- Chain and node facts: `chain` (ChainInfo), `nodeInfo`,
+  `consensusParameters(version)`, `health`, `latestGasPrice`,
+  `estimateGasPrice(blockHorizon)`.
+- Accounts and resources: `balance(owner, assetId)`, `balances(filter, ...)`,
+  `coin(utxoId)`, `coins(filter, ...)`,
+  `coinsToSpend(owner, queryPerAsset, excludedIds)` (spendable selection),
+  `assetDetails(id)`.
+- Contracts: `contract(id)`, `contractBalance(contract, asset)`,
+  `contractBalances(filter, ...)`; historical-execution nodes also expose
+  `contractSlotValues`/`contractBalanceValues(contractId, blockHeight, ...)`.
+- Transactions and blocks: `transaction(id)`, `transactions`,
+  `transactionsByOwner(owner, ...)`, `block(id|height)`, `blocks`,
+  `blockHorizon`-based estimation via `assembleTx`, `estimatePredicates(tx)`,
+  `dryRun(txs, utxoValidation, gasPrice, blockHeight)` (query; the mutation
+  form is deprecated at `0.47.1`), `dryRunRecordStorageReads`,
+  `storageReadReplay(height)`.
+- L1 messaging: `message(nonce)`, `messages(owner, ...)`,
+  `messageProof(transactionId, nonce, ...)`, `messageStatus(nonce)`,
+  `relayedTransactionStatus(id)`.
+- Mutations: `submit(tx, estimatePredicates)`; `produceBlocks` and the
+  debugger session mutations (`startSession`, `startTx`, `execute`, ...) exist
+  only where the node enables them.
+- Subscriptions: `statusChange(id, includePreconfirmation)`,
+  `submitAndAwait(tx)`, `submitAndAwaitStatus(tx, ...)`.
+
+`assembleTx(tx, blockHorizon, requiredBalances, feeAddressIndex, ...)` returns
+a fully funded transaction with change/variable/contract I/O, witness
+reservations and estimated predicates; treat its output as a candidate to
+review, not an authorization decision. Paginate with `first/after/last/before`
+cursors and verify pagination completeness in indexers.
+
 ## Operate nodes deliberately
 
 - Pin Fuel Core and chain/state configuration.

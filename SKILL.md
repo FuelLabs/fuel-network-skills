@@ -1,12 +1,33 @@
 ---
 name: fuel-network-skills
-description: Use for any task involving Fuel, FuelVM, Sway, Forc, Fuelup, fuels-ts, fuels-rs, Fuel wallets, nodes, or Fuel project artifacts. Selective modules cover toolchains, contracts, scripts, predicates and libraries, native assets and SRC standards, transactions and wallets, TypeScript and Rust clients, testing, security review, deployment and operations, migrations, evidence-backed readable-first gas/contract-size optimization, and opt-in maximum optimization or raw FuelVM assembly.
+description: Use for any task involving Fuel, FuelVM, Sway, Forc, Fuelup, fuels-ts, fuels-rs, Fuel wallets, nodes, or Fuel project artifacts. Selective modules cover toolchains, contracts, scripts, predicates and libraries, native assets and SRC standards, transactions and wallets, TypeScript and Rust clients, testing, security review, deployment and operations, migrations, evidence-backed readable-first gas/contract-size optimization, and opt-in maximum optimization or raw FuelVM assembly. Includes pinned self-contained references (no web needed) for Sway language syntax, storage, the std library, SRC interface signatures, FuelVM assembly/ISA, ABI JSON and encoding, transaction formats, and complete worked examples.
 ---
 
 # Fuel Network Skills
 
-Last updated: **2026-07-24T20:18:13-04:00** (`America/New_York`).
+Last updated: **2026-07-25T14:34:12-04:00** (`America/New_York`).
 Update this timestamp whenever any file in this skill changes.
+
+## Verification baseline
+
+Reference modules were verified against these pinned sources (each module
+header repeats its own stamp). To test whether the skill is outdated, run
+`python3 scripts/resolve_fuel_versions.py` and compare against this table;
+differences mean re-verification, not automatic invalidity.
+
+| Component | Verified baseline |
+|---|---|
+| Sway / core Forc / sway-lib-std | `v0.71.2` (commit `aa2e3b1`) |
+| Fuelup (installer/channel mechanics) | commit `8d05e80` (2026-04-07) |
+| fuel-vm / fuel-tx / fuel-asm | `v0.66.4` (from Sway v0.71.2's lockfile) |
+| fuel-specs | revision `dd11147` |
+| Fuel Core GraphQL schema | `v0.47.1` |
+| Live network channels (mainnet/testnet) | forc `0.70.2` + fuel-core `0.47.1`, snapshot 2026-07-23 |
+| fuels-ts | `v0.103.0` |
+| fuels-rs | `v0.77.0` |
+| sway-standards | commit `01f3d2f`, packages `0.8.2` (2026-07-13) |
+| sway-libs | commit `4908619` (2025-11-20), packages `0.26.1`-`0.27.0`, CI pins forc `0.70.2` |
+| Optimization evidence corpus | 434 iterations on pinned forc `0.71.2` release builds |
 
 Route Fuel work to the smallest relevant module set and ground version-sensitive
 advice in the project and target network.
@@ -41,7 +62,15 @@ advice in the project and target network.
 |---|---|
 | [Toolchain and packages](references/toolchain-and-packages.md) | Fuelup, Forc, installation, projects, workspaces, manifests, dependencies, lockfiles, registry, plugins, source builds |
 | [Program architecture](references/program-architecture.md) | Choosing signed UTXOs, predicates, scripts, contracts, libraries, state and concurrency boundaries |
-| [Sway authoring](references/sway-authoring.md) | Writing or refactoring Sway, ABIs, storage, calls, types, ownership, attributes, assembly |
+| [Sway authoring](references/sway-authoring.md) | Writing or refactoring Sway well: ABIs, effects, ownership, low-level isolation, verification |
+| [Sway language](references/sway-language.md) | Language definition: program types, types, control flow, generics, traits, ABIs, modules, attributes, panic/errors, operators, conversions, intrinsics |
+| [Storage](references/storage.md) | `storage` blocks, StorageKey/Map/Vec/String/Bytes APIs, namespaces, `in` keys, key derivation, purity, deploy-time slots |
+| [Std library](references/stdlib.md) | std signatures: auth, context, assets, block/time, tx/inputs/outputs, hash/crypto, revert codes, collections, codec, low-level calls |
+| [Worked examples](references/worked-examples.md) | Complete verified programs: counter, native-asset pool, configurables, script, predicates, proxy, unit tests |
+| [SRC interfaces](references/src-interfaces.md) | Exact SRC-3/5/6/7/10/11/12/14/15/16/17/20 ABI signatures, events and constants |
+| [sway-libs](references/sway-libs.md) | Ownership, admin, pausable, reentrancy, asset base, SRC-14 proxy internals, bytecode roots, merkle, queue, signed/big ints — implementation APIs and their fixed storage slots |
+| [FuelVM assembly](references/fuelvm-assembly.md) | Registers, memory model, full opcode set, GTF selectors, predicate-legal ops, call frames, panic codes, Sway `asm` block syntax |
+| [ABI and encoding](references/abi-and-encoding.md) | ABI JSON format, encoding v1 rules and call convention, hash-derived IDs, transaction/input/output/policy formats |
 | [Assets and standards](references/assets-and-standards.md) | Native assets, asset IDs, mint/burn/transfer, SRC interfaces, ownership and upgrade standards |
 | [Transactions and wallets](references/transactions-and-wallets.md) | Inputs, outputs, witnesses, fees, policies, resource selection, signing, messages, predicate data |
 | [TypeScript frontend](references/frontend-typescript.md) | fuels-ts, browser wallets, React/Next.js, generated types, provider/account integration |
@@ -49,20 +78,27 @@ advice in the project and target network.
 | [Testing and debugging](references/testing-and-debugging.md) | Sway tests, SDK integration tests, receipts, logs, reverts, local nodes, debugging |
 | [Security review](references/security-review.md) | Threat modeling, audit/review, authorization, asset conservation, predicates, reentrancy, upgrades, findings |
 | [Deployment and operations](references/deployment-and-operations.md) | Node selection, deploy/call/run/submit, salts and IDs, records, monitoring, relayers and indexers |
-| [Performance](references/performance.md) | Readable-first gas, transaction-size, storage, bytecode, predicate, call, receipt, memory and contention optimization |
-| [Auto-research findings](references/auto-research-findings.md) | Exact measured optimization, compiler, hashing, transaction-binding, architecture, griefing, contention and migration evidence from 434 iterations |
+| [Performance](references/performance.md) | Readable-first gas, transaction-size, storage, bytecode, predicate, call, receipt, memory and contention optimization, with measured 434-iteration evidence |
 | [Maximum optimization](references/maximum-optimization.md) | Explicit maximum gas/size work, full unrolling, raw FuelVM asm, aggressive commitment encoding and compiler-sensitive codegen; do not load by default |
 | [Migrations](references/migrations.md) | Sway/Forc/SDK/node upgrades, changelogs, artifact compatibility and rollout |
 
 Common cross-module pairs:
 
+- Writing new Sway from scratch: Sway language + Worked examples; add
+  Storage for stateful contracts and Std library for API signatures.
+- Token/NFT implementation: SRC interfaces + sway-libs + Assets and
+  standards.
+- Access control, pause, proxy or factory mechanics: sway-libs + Security
+  review.
+- Raw asm or bytecode inspection: FuelVM assembly + Sway authoring.
+- Predicate data or commitment encoding: ABI and encoding + Transactions
+  and wallets.
 - Contract plus frontend: Sway authoring + TypeScript frontend.
 - Predicate wallet flow: Program architecture + Transactions and wallets;
   add Security review for any authorization decision.
 - Deployment failure: Deployment and operations + Testing and debugging.
 - Compiler upgrade: Migrations + Toolchain and packages.
 - Gas regression: Performance + Testing and debugging.
-- Evidence-backed optimization: Performance + Auto-research findings.
 - Maximum gas/size request: Performance + Maximum optimization + Testing and
   debugging; add Security review for any commitment, predicate, storage or call
   change.

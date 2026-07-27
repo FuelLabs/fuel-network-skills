@@ -1,8 +1,10 @@
 # Transactions and wallets
 
-Ground transaction construction in the target node's chain ID and consensus
-parameters. SDK builders reduce bookkeeping but do not replace review of the
-final transaction.
+Protocol facts verified against `fuel-tx` `v0.66.4`; measured gas/byte
+figures are forc `0.71.2` research-fixture evidence. Ground transaction
+construction in the target node's chain ID and consensus parameters. SDK
+builders reduce bookkeeping but do not replace review of the final
+transaction.
 
 - [Model the whole transaction](#model-the-whole-transaction)
 - [Select resources safely](#select-resources-safely)
@@ -32,6 +34,22 @@ Do not hand-maintain dynamic predicate-data pointers or witness indices if a
 current SDK builder can resolve them after final input ordering. Inspect the
 built transaction after estimation because adding resources can change offsets,
 size, predicate work and fees.
+
+Know what a revert undoes (per the FuelVM spec at revision `dd11147`). A
+script revert does NOT make the transaction disappear: the reverted
+transaction is still included, its inputs are spent, its declared `Coin`
+outputs are still created, and fees are paid. What rolls back: contract
+`balanceRoot`/`stateRoot` return to initialization values and `Variable`
+outputs are zeroed (so `TRO` transfers are undone); reverted transactions
+must also not have their outgoing L1 messages relayed. By contrast, a
+predicate returning false makes the transaction *invalid* — it is never
+included and nothing is spent. Do not design escrow or refund logic on the
+assumption that a revert un-spends inputs or suppresses fixed `Coin`
+outputs.
+
+The `Expiration` policy is inclusive: a transaction is invalid when
+`blockheight() > expiration`, so the expiration height itself is the last
+block at which it can be included.
 
 ## Select resources safely
 
@@ -101,9 +119,28 @@ Use an SDK builder and explicit intent model. For performance:
 
 Research entrypoints saved about 1,250 gas by moving independent malformed
 input/output/recipient checks before later bounded work. Do not manufacture
-that saving by dropping a required binding dimension. Read
-[auto-research-findings.md](auto-research-findings.md) for the measured
-security-cost table.
+that saving by dropping a required binding dimension.
+
+Each binding dimension has a measured price (forc 0.71.2 fixtures) — treat
+these as the cost of a security property, never as removable overhead:
+
+| Binding dimension | Measured cost |
+|---|---|
+| Input type + owner + predicate-data length in digest | +2,987 gas |
+| Output-type discriminant | +373 gas/+624 B |
+| Four explicit subdomain tags on a hash tree | +2,597 gas/+848 B |
+| Selected witness payload length | +208 B |
+| Chain ID in a predicate commitment | +266 gas/+72 B |
+| Require `Transaction::Script` | +55 gas/+520 B |
+| Script bytecode hash | +7,564 gas/+360 B |
+| Rollover input bytecode | +5 gas/+184 B |
+| Rollover bound to a `Coin` output | +12 gas/+392 B |
+| Exact consideration output count | +3 gas/+16 B |
+| Recipient net gain | +9 gas/+136 B (one fixture; +232 B in another) |
+
+Normalizing one predicate's witness-index width to the auditor's `u64`
+encoding saved 54 gas/128 B *and* removed a cross-package root discrepancy —
+consistent widths improve both cost and correctness.
 
 ## Separate read, simulate, sign and submit
 

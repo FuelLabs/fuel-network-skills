@@ -102,6 +102,11 @@ reproducible.
 
 ## Primary repositories
 
+For syntax/API verification, prefer a local shallow clone of the exact
+pinned tag (`git clone --branch <tag> --depth 1 ...`) and read its sources,
+CI-built examples and e2e test programs directly; several official web pages
+were stale at the snapshot while in-repo sources were authoritative.
+
 Primary repositories:
 
 - `FuelLabs/sway`: compiler, core Forc, standard library and versioned docs.

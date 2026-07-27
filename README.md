@@ -3,7 +3,9 @@
 A Codex skill for building, integrating, reviewing, optimizing, migrating, and
 operating projects on Fuel. It covers Sway and FuelVM programs, Forc and
 Fuelup toolchains, TypeScript and Rust SDKs, wallets and transactions, native
-assets, testing, security, deployment, and performance work.
+assets, testing, security, deployment, and performance work. Pinned,
+self-contained references cover the Sway language, storage, standard library,
+SRC interfaces, FuelVM assembly, ABI encoding, and worked examples.
 
 ## Install
 

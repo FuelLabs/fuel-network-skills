@@ -1,5 +1,7 @@
 # Maximum optimization
 
+Measured figures verified on pinned forc `0.71.2` release builds; VM
+immediate/trap semantics verified at `fuel-vm` `v0.66.4`.
 Load this module only when the user explicitly asks for maximum gas reduction,
 minimum bytecode, raw FuelVM assembly, compiler/codegen exploration, or accepts
 lower readability for a measured hot path. For ordinary implementation, use
@@ -13,6 +15,7 @@ lower readability for a measured hot path. For ordinary implementation, use
 - [Preserve assembly semantics](#preserve-assembly-semantics)
 - [Exploit compiler-sensitive size forms carefully](#exploit-compiler-sensitive-size-forms-carefully)
 - [Optimize commitment encoding without weakening it](#optimize-commitment-encoding-without-weakening-it)
+- [Consult calibrated micro-results](#consult-calibrated-micro-results)
 - [Run the maximum-optimization gate](#run-the-maximum-optimization-gate)
 
 ## Escalate deliberately
@@ -203,7 +206,12 @@ Opposite/context-sensitive results:
 - explicit `Option<u64>` match: +24 B;
 - manual helper inline: +64 B for about -2 gas;
 - script locals: often +8 B;
-- precomputed `b256` literal: +216 B.
+- precomputed `b256` literal: +216 B;
+- `i & 7` instead of `% 8`: -8 B but a gas regression on the relevant path;
+- `&&` chain to early returns: +32 B/+14 total gas (reject path -2);
+- sharing a predicate failure epilogue: -16 B, but reshaping another into a
+  different form: +96 B;
+- checked-add reassociation: usually 0/0, one association -7 gas/+24 B.
 
 Use release artifact diffs, not source aesthetics.
 
@@ -235,6 +243,44 @@ Do not introduce extra nested hashes merely to label subdomains. Four explicit
 subdomain tags in an existing five-hash tree cost 2,597 gas/848 B. Prefer
 domain-first fields inside one complete stream when the protocol encoding can
 be versioned coherently.
+
+Reuse already-stored authenticated commitments instead of reserializing
+fields: bridge root composition from stored sender/payload commitments plus
+amount saved 6,559 gas/176 B, while chaining the same fields through
+additional hash rounds cost 9,401 gas/240 B. Reuse only when the stored
+commitments already cover the same fields, widths, order, domain,
+mutability/lifetime, and producer/consumer encoding.
+
+Pack to shrink the serialized hash payload, not as a general bool-array
+habit: packing eight permission booleans before hashing saved 102 gas/0 B,
+but the same idea on transcript flags regressed 136 gas/64 B. Hash bools
+directly — converting each to `u64` first cost 472 gas over eight values.
+
+## Consult calibrated micro-results
+
+Narrow forc 0.71.2 fixture results for analogous hot paths; reproduce before
+production use:
+
+| Intervention | Result | Lesson |
+|---|---:|---|
+| XOR/OR snapshot-difference accumulation | -6 gas/0 B | Branchless aggregation can beat early return |
+| Track max depth, assert once after loop | -7 gas/0 B | In-loop asserts are not free |
+| Affine fold offset as induction variable | -6 gas/+8 B (elsewhere +1 gas) | Transfer is package/function specific |
+| Hoist modulus shared by two branches | 0 gas/-8 B | Branch-tail dedup can be size-only |
+| Phase-directed early returns | -23 gas/+40 B | Faster control flow can grow bytecode |
+| Bool-to-value liveness rewrite | +39 gas/-48 B | Smaller branch encoding can be slower |
+| `i != n` instead of `i < n` | +9 to +38 gas | Ordered `<` was never worse |
+| Count-down loop | 0 gas/-8 B | Size shape, gas-neutral |
+| Inline loop-produced struct fields | -432 gas/0 B per 8 items | Avoid one-use aggregates in loops |
+| Fuse duplicate cold policy scans | 0 gas/-88 B | Fuse cold duplicated scans for size |
+| Remove write-only counter update | +3 gas/-168 B | Dead storage code can be large; sibling gas moves from layout |
+
+Expect these nulls and stop signals: sinking branch-exclusive construction,
+staging one arithmetic term, storage-read scheduling without removed work,
+and loop-invariant association are commonly 0/0; small `if/else` versus
+`match` dispatch can be byte-identical; deleting a generic identity wrapper
+measured +12 gas/+16 B; binding repeated transaction introspection to a
+local added 0-8 B.
 
 ## Run the maximum-optimization gate
 
