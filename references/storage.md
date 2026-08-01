@@ -77,6 +77,13 @@ Read entries with `storage.map.get(k).try_read().unwrap_or(default)`.
 `try_insert` returns `StorageMapError::OccupiedError(existing)` instead of
 overwriting.
 
+For compound structures, co-locate values sharing lifecycle/update boundaries.
+Mutate mirrored indexes atomically; reject duplicate external IDs and missing
+indexes rather than let defaults hide partial writes. Encode linkage once in a
+typed variant such as `Parent(id)`, validate IDs before storage access and
+never map decode failure to absence. Use named composite keys/discriminants and
+prove exact width/slot compatibility before upgrading.
+
 `StorageVec<V>`: `push`, `pop() -> Option<V>`,
 `get(i) -> Option<StorageKey<V>>`, `set`, `insert`, `remove(i) -> V`
 (shifts tail; reverts out-of-bounds), `swap_remove`, `swap`, `len`,
@@ -91,6 +98,11 @@ length-zeroed, not erased.
 `write_slice(value)`, `read_slice() -> Option<String|Bytes>`, `clear()`,
 `len()`. A written empty value still reads back as `None`; length 0 is
 indistinguishable from never-written.
+
+When a structure maintains metadata, links and external indexes, update them
+together across empty, singleton, removal and reuse states. Never recycle an
+externally visible ID; overwrite stale metadata before reuse and bound traversal
+by the authoritative length.
 
 ## Know the key derivation
 
@@ -137,7 +149,10 @@ re-namespacing fields moves live state.
 Raw access (`std::storage::storage_api::{read_quads, write_quads}` and the
 `__state_load_word`/`__state_store_word` intrinsics with self-chosen `b256`
 keys) bypasses all derivation — isolate and audit per
-[sway-authoring.md](sway-authoring.md).
+[sway-authoring.md](sway-authoring.md). Match serialization helpers to exact
+storage widths, confine intentional wrapping to a named bounded helper, and
+separate safe APIs from `unsafe_` primitives whose callers must repair related
+metadata atomically.
 
 ## Test storage behavior
 

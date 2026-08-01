@@ -71,6 +71,15 @@ application/contract, operation, data version, nonce, expiry, assets/amounts,
 recipient and permitted calls. Verify what the wallet displays; never ask a
 user to blind-sign an opaque hash when typed intent is possible.
 
+Use the verifier's canonical preimage and treat field/order/wrapper changes as
+protocol changes. Keep one authoritative nonce per domain and reject
+manager/call divergence. Sign complete ordered batches—targets, methods,
+arguments and forwarded assets—and consume the nonce once. Validate packed
+nonce fields/reserved bits, expose logical window state and prove failure rolls
+back mutation; resynchronize clients after async/preconfirmed operations. Keep
+feature-probe versions separate from signing-domain versions. Do not apply a
+second signature-domain hash to an already-prehashed digest.
+
 For predicates, assume anyone can submit a satisfying transaction. Bind all
 relevant inputs and outputs, asset amounts, recipient/change, script/contracts,
 predicate-data version/domain, witness index, nonce and supported time policy.

@@ -3,8 +3,12 @@
 Measured gas/byte figures verified on forc `0.71.2` research fixtures;
 incident and audit references are dated primary records. Freeze the exact
 commit, toolchain, SDK/node matrix, target chain and release artifacts before
-reviewing. Historical reports are scoped evidence, not proof of a current
-vulnerability.
+reviewing. Promote a historical pattern only when a human finding identifies
+pre-fix behavior and final code corrects it; bots, CI, tests, mocks, intent,
+generated summaries and empty approvals do not establish a production defect
+or fix. Record none without that chain, re-review late semantic changes, and
+keep packaging/release observations separate from contract-safety or economic
+claims.
 
 - [Review in invariant order](#review-in-invariant-order)
 - [Audit predicates as complete locks](#audit-predicates-as-complete-locks)
@@ -42,6 +46,11 @@ wide intermediates with checked narrowing, define decimal normalization and
 rounding direction explicitly, and property-test repeated state transitions —
 not only isolated calls — across minimums, maximums, overflow boundaries and
 heterogeneous token decimals.
+
+Apply allow/deny policy to direct and composite entrypoints, keep accepted
+variants/reverts aligned with the ABI, and classify each external method as
+permissionless, owner-only or signature-authorized. Distinguish caller from a
+named authorization subject wherever delegation is possible.
 
 ## Audit predicates as complete locks
 
@@ -183,6 +192,14 @@ tolerate imperfect clocks and define behavior when a feed rejects updates or
 serves stale data. Test stale, missing, negative, future-dated,
 wide-confidence-interval and differently scaled values.
 
+For invalidatable external state, co-locate fields updated together but keep
+the replay watermark separate. Invalidation clears the live value and raises
+the watermark to `max(previous_watermark, block_time)`; recovery must be newer,
+including within the same second. Separate write/read freshness and expose one
+getter with one stale/missing policy. Keep tolerance/range math in the widest
+type until comparison; document units, scales and time format, and define how
+configuration changes affect live state.
+
 ## Review lifecycle and operations
 
 Require one-time initialization guards, least privilege, two-step/delayed
@@ -321,6 +338,8 @@ proof of safety.
 For each finding include severity, confidence, file/line, version/artifact
 scope, violated invariant or affected asset, prerequisites, concrete
 exploit/failure transaction, impact, minimal fix and regression test. Separate
-confirmed defects from hardening and unresolved compatibility questions. Use
-the repository's private disclosure process for plausible undisclosed
+confirmed defects from hardening and unresolved compatibility questions.
+Require adversarial human review for authorization, nonce, storage-layout and
+resource/accounting-limit changes; compilation and automation are insufficient. Use the
+repository's private disclosure process for plausible undisclosed
 vulnerabilities.

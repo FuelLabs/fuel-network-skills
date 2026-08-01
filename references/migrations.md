@@ -54,6 +54,12 @@ compiler/plugin/node/SDK matrix independently.
 Use `scripts/diff_fuel_artifacts.py` for the artifact comparison. Treat any
 contract-ID change as a deployment/API event, not a build detail.
 
+Never reuse initialization as an upgrade migration; add an owner-gated
+migration for new roles/state and test fresh deployment separately from
+upgraded legacy state. Version and migrate persistent values before widening
+tuples: zero-filled fields do not migrate legacy data, so quarantine unmigrated
+records from decisions that assume new fields or zero totals are authoritative.
+
 ## Protect state-migration checkpoints
 
 For an application-level shard/batch migration:

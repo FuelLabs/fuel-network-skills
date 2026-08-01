@@ -178,7 +178,11 @@ forc test --release --locked
 
 Use `forc fmt` without `--check` only when formatting mutation is intended.
 Archive the release ABI, bytecode, storage slots, configurables and roots/IDs
-that feed bindings or deployment. Never deploy a debug artifact.
+that feed bindings or deployment. Clean generated output, produce them in one
+build and fail when a production ABI is missing. Treat Rust/npm packages,
+bindings, generated names/exports, deployment records and addresses as one
+compatibility surface; dry-run the exact package deployment consumes. Never
+deploy a debug artifact.
 
 For deeper inspection, verify flags on the installed version:
 

@@ -21,6 +21,8 @@ on 2026-07-23. Adjust commands to the project pins.
 4. Run read-only or explicitly authorized smoke tests against the target
    network.
 5. Compare release artifacts and worst-case transaction metrics.
+6. Test published root and declared subpath imports under runtime and type
+   resolution.
 
 Do not claim first-class Sway fuzzing/formal verification where the selected
 toolchain does not provide it. Property and adversarial tests can live in SDK

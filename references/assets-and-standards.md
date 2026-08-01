@@ -22,7 +22,14 @@ For every asset-moving method, state:
 
 Validate `msg_asset_id()` and `msg_amount()` at payable entry points before
 updating storage. Keep contract accounting reconciled with native contract
-balances.
+balances. Assign every retained amount to exactly one named state; after each
+transition and failure path, assert the native balance equals the internal sum.
+
+Derive rounded debits/releases from before/after state rather than rounding a
+delta independently, and account for every remainder. Finalize refunds and
+early returns in one path that records whether value was already counted. Keep
+accounting unconditional when skipping zero transfers and guard each asset
+independently.
 
 ## Construct the full transaction
 
@@ -36,7 +43,9 @@ Provision the output shape the operation requires:
 
 Do not rely on output order unless the invariant explicitly binds it. Test
 extra, missing, duplicate and reordered outputs; wrong asset; zero amount;
-mixed assets; maximum amount; and fee/dust edges.
+mixed assets; maximum amount; fee/dust edges; exact-fit, over-cap, tie,
+remainder and scaled-to-zero cases. Treat validation and rounding switches as
+protocol changes and test both settings.
 
 Treat messages crossing domains as a schema and conservation problem. Test
 field order and widths, hash construction, decimal conversion, base-asset

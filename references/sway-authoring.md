@@ -30,7 +30,12 @@ types, ABIs and functions.
 
 Keep public ABIs small and stable. Put shared ABI definitions and data types in
 a library rather than duplicating definitions between contracts and clients.
-Treat ABI changes as cross-language API migrations.
+Treat ABI changes as cross-language API migrations. Represent meaningful
+absence/transitions with `Option` or enums rather than value-plus-boolean,
+fabricated empty records or zero sentinels; branch with `match`/`if let` rather
+than probe then `unwrap`. Give each safety policy one canonical getter and
+remove contradictory legacy semantics. Emit one public event per semantic
+transition; keep internal execution enums private unless versioning the ABI.
 
 ## Make effects visible
 

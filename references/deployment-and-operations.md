@@ -32,6 +32,12 @@ and configuration back to the approved record.
 7. Submit only after explicit approval.
 8. Wait for final result, verify deployed state/bytecode and archive receipts.
 
+Persist multi-step automation as explicit unregistered, deployed, registered,
+initialized, upgraded and admin-transferred states—not optional IDs. Treat the
+on-chain registry, when present, as identity truth; reconcile one canonical
+deployment key, persist actual targets and retry registration/initialization
+safely after partial success.
+
 Network-facing commands are independently released Forc plugins:
 
 ```sh
@@ -120,6 +126,13 @@ relayer and implementation changes as high-impact transactions:
 - record typed intent, chain, contract and before/after configuration;
 - monitor the resulting event/state;
 - maintain rollback, containment and communication runbooks.
+
+Domain-separate deterministic salts by network, deployment kind and logical
+instance. Propagate every protocol-affecting configurable through schemas,
+builders, generated types, fixtures, readback and events without a silent Sway
+default. Share one deployment/upgrade builder; define whether values persist,
+reinitialize or needan admin write. Transfer proxy and implementation ownership separately onlyafter configuration. Replace maintainers in revoke/grant/transfer order; make
+retries and duplicate grants safe and leave a recovery-capable maintainer.
 
 For upgrades, preserve old-message/state liveness, storage layout and
 outstanding operations. Immutability removes governance risk but does not

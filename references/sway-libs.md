@@ -54,6 +54,16 @@ the ownership library (mutations are `only_owner`-gated).
 #[storage(read)]        pub fn only_owner_or_admin()
 ```
 
+For richer ACLs, model actual multi-holder cardinality; a grant-only API or
+last-grantee field is not a role set. Prefer `Identity -> packed roles` when
+identity is the dominant query, use semantic `Role`/`RoleBitmap` ABI types and
+centralize bitmap operations: reject indexes at/above width, grant with OR and
+revoke with AND-NOT without changing other bits. Test bit zero, the highest
+valid bit and the first invalid bit; measure slot/hash cost as membership grows.
+Keep owner-authorized recovery even when owner lacks the ACL-admin role, make
+absent revocation harmless and treat ACL-library integration as a privileged
+ABI/storage migration.
+
 ## pausable
 
 Flag at fixed slot `0xd987cda398e9af257cbcf8a8995c5dccb19833cadc727ba56b0fec60ccf8944c`.
