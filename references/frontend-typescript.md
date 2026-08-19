@@ -49,7 +49,8 @@ export default createConfig({
 ```
 
 Check the installed CLI's config schema; options change. Treat `privateKey` and
-deployment hooks as privileged server/build inputs, never browser configuration.
+deployment hooks as privileged server/build inputs, never browser configuration:
+never bundle private keys, mnemonics or deployment keys into the client bundle.
 If generated bindings are committed, fail CI on unexpected diffs. Ensure the
 ABI and deployed bytecode/contract ID come from the same release build.
 
@@ -107,12 +108,9 @@ deliberately.
 
 ## Build safe UX
 
-Before wallet approval, show network, account, contract, method, assets,
-amounts, recipient, estimated fee and important policies in user terms. Disable
-duplicate submission while pending and make retry/idempotency behavior clear.
-Differentiate rejection, simulation revert, submission failure and final
-failure. Never expose private keys, mnemonics or server deployment keys to the
-client bundle.
+Differentiate connector rejection, simulation revert, submission failure and
+final on-chain failure; they are four distinct states, and only
+`waitForResult()` settles the last one.
 
 Test with `launchTestNode` from `fuels/test-utils` for deterministic local
 integration, then run a separate smoke test against the target network. Cover

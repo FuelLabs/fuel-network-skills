@@ -15,30 +15,37 @@ protection to improve a benchmark.
 - [Count transaction-amplified work](#count-transaction-amplified-work)
 - [Maintain a regression baseline](#maintain-a-regression-baseline)
 - [Escalate only for maximum optimization](#escalate-only-for-maximum-optimization)
-- [Locate the raw corpus](#locate-the-raw-corpus)
 
 ## Default to readable optimization
 
-Prefer the clearest form that removes real work. Use this order:
+This section is the canonical statement of the skill's optimization defaults;
+other modules point here. Prefer the clearest form that removes real work.
+Use this order:
 
 1. Delete repeated storage reads/writes, transaction getters, hashes, calls,
-   scans, allocations or duplicated blocks.
+   scans, allocations or duplicated blocks: read authoritative state once per
+   phase and write once.
 2. Reject invalid transaction shapes before bounded work when the accepted set
    remains identical.
 3. Cache an immutable value only when no call or mutation can stale it.
-4. Use fixed arrays and keyed access for small/bounded work.
-5. Apply a measured compact control-flow form in the same context.
-6. Keep the readable version unless a remaining hot path justifies a
+4. Use fixed arrays and keyed access for small/bounded work, and construct an
+   aggregate once from locals instead of mutating then returning it.
+5. Stream one complete canonical commitment instead of a deep hash tree, with
+   every field, width, order and domain intact.
+6. Apply a measured compact control-flow form in the same context.
+7. Keep the readable version unless a remaining hot path justifies a
    compiler-sensitive transform.
 
 Do not default to full unrolling, raw asm, wide commitment rewrites, branchy
-strength reduction, or code-layout tricks. Load
+strength reduction, or code-layout tricks; keep fixed bounded loops readable
+rather than unrolling them speculatively. When a measured hot path does
+justify asm or a compiler-sensitive kernel, isolate it behind a typed Sway
+interface and retain a readable Sway oracle to differential-test against. Load
 [maximum-optimization.md](maximum-optimization.md) only when the user asks for
 maximum gas/size or accepts reduced readability.
 
 The measurements in this module come from a 434-iteration research corpus on
-pinned `forc 0.71.2` release builds (see [Locate the raw
-corpus](#locate-the-raw-corpus)). Treat them as strong fixture/compiler
+pinned `forc 0.71.2` release builds. Treat them as strong fixture/compiler
 evidence for ranking opportunities, not as target-node constants; re-measure
 on the project pin.
 
@@ -66,12 +73,12 @@ For forc 0.71.2 research fixtures, prioritize:
 - **Storage writes:** a write inside a 365-round loop cost +122,304 gas
   versus writing once after; unconditionally writing back unchanged
   aggregates cost +4,836 gas. Write only changed state, outside loops.
-- **Failure position:** early malformed/expired entrypoint rejection saved
-  about 1,250-3,960 gas by avoiding witness/hash/bounded work. Early
-  rejection is safe only when the accepted transaction set, required
-  accounting/authorization, and caller-observable failure metadata are
-  unchanged, replay/mutation order is preserved, and no constant-work policy
-  forbids variable-time rejection.
+- **Failure position:** early entrypoint rejection saved about 1,250 gas on
+  malformed transaction-shape gates and 3,832-3,960 gas on expired oracle
+  lanes by avoiding witness/hash/bounded work. Early rejection is safe only
+  when the accepted transaction set, required accounting/authorization, and
+  caller-observable failure metadata are unchanged, replay/mutation order is
+  preserved, and no constant-work policy forbids variable-time rejection.
 - **Transaction getters:** repeated getters survived release optimization —
   a duplicate `input_asset_id` cost +429 gas, recomputing `tx_id()` per
   input +53 gas; caching complete entrypoint counts saved 21-156 gas.
@@ -83,8 +90,10 @@ For forc 0.71.2 research fixtures, prioritize:
   roughly 277-292 gas.
 - **Structural size:** remove a whole accessor/helper block, merge equivalent
   guards, use `if let` for measured predicate decode shapes, and explicitly
-  match `Option<bool>` replay defaults. Bytecode moves in 8-byte quanta —
-  target a whole call site or block; sub-word cleanups often land at 0 B.
+  match `Option<bool>` replay defaults, but retain `unwrap_or` for scalar
+  defaults unless release measurement favors a match. Bytecode moves in
+  8-byte quanta — target a whole call site or block; sub-word cleanups often
+  land at 0 B.
 - **Sparse work:** iterate set bits (a Kernighan popcount saved 441 gas over
   a fixed 64-round count) or stop a scan when remaining work is empty
   (-468 gas) instead of always traversing a large fixed domain. Eliminate
@@ -92,6 +101,29 @@ For forc 0.71.2 research fixtures, prioritize:
   branches (a maintained counter regressed 10 gas).
 - **Allocation:** materializing a `Vec` for eight fixed scores cost
   +616 gas; keep small fixed arrays.
+
+The top lever in `#[storage(read, write)]` code is hoisting the slot out of
+the loop:
+
+```sway
+// Before: a storage read and a storage write on every iteration.
+let mut i = 0;
+while i < rounds {
+    storage.total.write(storage.total.try_read().unwrap_or(0) + reward(i));
+    i += 1;
+}
+
+// After: read once, accumulate in a local, write the changed value once.
+let mut total = storage.total.try_read().unwrap_or(0);
+let mut i = 0;
+while i < rounds {
+    total += reward(i);
+    i += 1;
+}
+storage.total.write(total);
+```
+
+Apply this only when no call inside the loop can observe or mutate the slot.
 
 Short-circuit order depends on real intrinsic cost and input selectivity.
 Owner-first, asset-first and type-first produced different results in different
@@ -120,7 +152,7 @@ Avoid by default:
 - added hash nesting or dropped commitment fields;
 - new generic instantiations and wide tuple encoders, which can add
   substantial monomorphized code;
-- optimization claims based only on total gas or source line count.
+- optimization claims based only on total gas.
 
 Treat exact-zero deltas as evidence. Determine whether the source was
 canonicalized, unreachable for that metric, or hidden by artifact alignment.
@@ -128,11 +160,11 @@ canonicalized, unreachable for that metric, or hidden by artifact alignment.
 ## Benchmark what ships
 
 At Sway `v0.71.2`, debug used `Opt0` and release used `Opt1`, with different
-panic/backtrace behavior. Capture release output:
+panic/backtrace behavior. Run the standard verification ladder first (see
+[testing-and-debugging.md](testing-and-debugging.md)), then capture release
+measurement output:
 
 ```sh
-forc build --release --locked
-forc test --release --locked
 forc build --release --locked --ir initial final --asm final --bytecode
 forc build --release --locked --time-phases
 forc build --release --locked --metrics-outfile build-metrics.json
@@ -226,15 +258,3 @@ prioritizes maximum optimization:
 
 Use [maximum-optimization.md](maximum-optimization.md) for the full unrolling,
 assembly, immediate-width, register, and aggressive codegen workflow.
-
-## Locate the raw corpus
-
-The measured numbers in this skill come from a 434-iteration
-champion/challenger and observational corpus (order book, collateralized
-lending, cross-domain bridge, plus 16 observational tracks) on pinned
-`forc 0.71.2`. When a claim needs its full caveats, the corpus lives in the
-fuel research repository (skip if that project is not checked out):
-`auto_research_results.md` at the repo root consolidates all runs; each track
-keeps an `advice.md` under `auto_research/optimizations/...` or
-`auto_research/experiments/...`; the authoritative raw record is that track's
-`research/iterations/NNNN.json` and `NNNN.md` journal.

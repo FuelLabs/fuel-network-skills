@@ -26,9 +26,8 @@ Run local preflight and live version resolution. Record:
 | fuels-ts | lock version | target | SDK changelog/integration |
 | Artifacts | hashes/IDs | expected hashes/IDs | artifact diff/deployment plan |
 
-Do not move a network application to the newest compiler merely because it is
-newer. Either follow a compatible network distribution or prove the complete
-compiler/plugin/node/SDK matrix independently.
+Follow a compatible network distribution, or prove the complete
+compiler/plugin/node/SDK matrix independently before moving.
 
 ## Migrate in controlled stages
 
@@ -45,14 +44,13 @@ compiler/plugin/node/SDK matrix independently.
 4. Switch to the exact target compiler and independently selected plugins.
 5. Format, check, debug-test, release-build and release-test with `--locked`.
 6. Regenerate bindings intentionally.
-7. Diff ABI, bytecode, storage slots, configurables, roots/IDs and bindings.
+7. Diff the release artifacts with `scripts/diff_fuel_artifacts.py`.
 8. Compare gas and full transaction shape.
 9. Test against the target Fuel Core, chain ID and consensus parameters.
 10. Rehearse deployment/upgrade, outstanding-state/message handling and
     rollback or containment.
 
-Use `scripts/diff_fuel_artifacts.py` for the artifact comparison. Treat any
-contract-ID change as a deployment/API event, not a build detail.
+Treat any contract-ID change as a deployment/API event, not a build detail.
 
 Never reuse initialization as an upgrade migration; add an owner-gated
 migration for new roles/state and test fresh deployment separately from
@@ -94,9 +92,10 @@ Do not infer crash safety from a single call. Rehearse:
 Measure every snapshot/reuse candidate independently — results varied from
 -63 gas (predicate transaction-shape snapshot) through 0/-56 B (active
 version) to +8 gas (script transaction-ID snapshot) in the same fixture
-family. Reducing plan/receipt hash rounds saved roughly 277-292 gas per SHA
-invocation, but wide flat tuples may not implement `Hash` — nest or stream
-per [maximum-optimization.md](maximum-optimization.md).
+family. Reducing plan/receipt hash rounds is a measured per-SHA-invocation
+saving (figure in [performance.md](performance.md)), but do not widen a flat
+commitment tuple to get it: nest or stream instead
+([stdlib.md](stdlib.md)).
 
 ## Read changelogs by affected boundary
 

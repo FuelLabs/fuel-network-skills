@@ -1,12 +1,11 @@
 ---
 name: fuel-network-skills
-description: Use for any task involving Fuel, FuelVM, Sway, Forc, Fuelup, fuels-ts, fuels-rs, Fuel wallets, nodes, or Fuel project artifacts. Selective modules cover toolchains, contracts, scripts, predicates and libraries, native assets and SRC standards, transactions and wallets, TypeScript and Rust clients, testing, security review, deployment and operations, migrations, evidence-backed readable-first gas/contract-size optimization, and opt-in maximum optimization or raw FuelVM assembly. Includes pinned self-contained references (no web needed) for Sway language syntax, storage, the std library, SRC interface signatures, FuelVM assembly/ISA, ABI JSON and encoding, transaction formats, and complete worked examples.
+description: Use for any task involving Fuel, FuelVM, Sway, Forc, Fuelup, fuels-ts, fuels-rs, Fuel wallets, nodes, or Fuel project artifacts. Selective modules cover toolchains, contracts, scripts, predicates and libraries, native assets and SRC standards, transactions and wallets, TypeScript and Rust clients, testing, security review, deployment and operations, migrations, gas and contract-size optimization, and opt-in maximum optimization or raw FuelVM assembly. Includes pinned self-contained references (no web needed) for Sway language syntax, storage, the std library, SRC interface signatures, FuelVM assembly/ISA, ABI JSON and encoding, transaction formats, and complete worked examples.
 ---
 
 # Fuel Network Skills
 
-Last updated: **2026-07-31T20:41:40-04:00** (`America/New_York`).
-Update this timestamp whenever any file in this skill changes.
+Last updated: **2026-08-18T16:51:04-04:00** (`America/New_York`).
 
 ## Verification baseline
 
@@ -46,12 +45,12 @@ advice in the project and target network.
    upgrade, read [source-policy.md](references/source-policy.md) and resolve
    live primary versions. Keep the network channel and newest upstream release
    as distinct baselines.
-5. Default to readable optimization: remove real storage/getter/hash/call/write
-   work, reject invalid shapes early and use measured compact idioms without
-   obscuring invariants. Load maximum-optimization guidance only when the user
-   explicitly prioritizes maximum gas/size or accepts lower readability.
-6. Make the smallest in-scope change. Preserve lockfiles and generated
-   artifacts unless regeneration is intentional.
+5. Default to readable optimization per
+   [performance.md](references/performance.md); load
+   [maximum-optimization.md](references/maximum-optimization.md) only when the
+   user explicitly asks for maximum gas/size.
+6. Preserve lockfiles and generated artifacts unless regeneration is
+   intentional.
 7. Verify at the relevant layers and report the exact toolchain, network,
    artifacts, and tests used. Never deploy, submit, publish, fund, or sign
    without explicit authority.
@@ -65,10 +64,10 @@ advice in the project and target network.
 | [Sway authoring](references/sway-authoring.md) | Writing or refactoring Sway well: ABIs, effects, ownership, low-level isolation, verification |
 | [Sway language](references/sway-language.md) | Language definition: program types, types, control flow, generics, traits, ABIs, modules, attributes, panic/errors, operators, conversions, intrinsics |
 | [Storage](references/storage.md) | `storage` blocks, StorageKey/Map/Vec/String/Bytes APIs, namespaces, `in` keys, key derivation, purity, deploy-time slots |
-| [Std library](references/stdlib.md) | std signatures: auth, context, assets, block/time, tx/inputs/outputs, hash/crypto, revert codes, collections, codec, low-level calls |
+| [Std library (built-in `std::`, ships with the compiler)](references/stdlib.md) | std signatures: auth, context, assets, block/time, tx/inputs/outputs, hash/crypto, revert codes, collections, codec, low-level calls |
 | [Worked examples](references/worked-examples.md) | Complete verified programs: counter, native-asset pool, configurables, script, predicates, proxy, unit tests |
 | [SRC interfaces](references/src-interfaces.md) | Exact SRC-3/5/6/7/10/11/12/14/15/16/17/20 ABI signatures, events and constants |
-| [sway-libs](references/sway-libs.md) | Ownership, admin, pausable, reentrancy, asset base, SRC-14 proxy internals, bytecode roots, merkle, queue, signed/big ints — implementation APIs and their fixed storage slots |
+| [sway-libs (external add-on packages: ownership, pausable, proxy...)](references/sway-libs.md) | Ownership, admin, pausable, reentrancy, asset base, SRC-14 proxy internals, bytecode roots, merkle, queue, signed/big ints — implementation APIs and their fixed storage slots |
 | [FuelVM assembly](references/fuelvm-assembly.md) | Registers, memory model, full opcode set, GTF selectors, predicate-legal ops, call frames, panic codes, Sway `asm` block syntax |
 | [ABI and encoding](references/abi-and-encoding.md) | ABI JSON format, encoding v1 rules and call convention, hash-derived IDs, transaction/input/output/policy formats |
 | [Assets and standards](references/assets-and-standards.md) | Native assets, asset IDs, mint/burn/transfer, SRC interfaces, ownership and upgrade standards |
@@ -84,8 +83,9 @@ advice in the project and target network.
 
 Common cross-module pairs:
 
-- Writing new Sway from scratch: Sway language + Worked examples; add
-  Storage for stateful contracts and Std library for API signatures.
+- Writing new Sway from scratch: Sway language + Sway authoring + Worked
+  examples; add Storage for stateful contracts and Std library for API
+  signatures.
 - Token/NFT implementation: SRC interfaces + sway-libs + Assets and
   standards.
 - Access control, pause, proxy or factory mechanics: sway-libs + Security
@@ -94,8 +94,8 @@ Common cross-module pairs:
 - Predicate data or commitment encoding: ABI and encoding + Transactions
   and wallets.
 - Contract plus frontend: Sway authoring + TypeScript frontend.
-- Predicate wallet flow: Program architecture + Transactions and wallets;
-  add Security review for any authorization decision.
+- Predicate wallet flow: Program architecture + Transactions and wallets +
+  Worked examples; add Security review for any authorization decision.
 - Deployment failure: Deployment and operations + Testing and debugging.
 - Compiler upgrade: Migrations + Toolchain and packages.
 - Gas regression: Performance + Testing and debugging.
@@ -163,8 +163,7 @@ compatibility guarantee.
 ## Report useful evidence
 
 For implementation, summarize changed files, program/SDK boundaries, and
-verification. For review, emit findings ordered by severity with file/line,
-affected invariant or asset, exploit/failure path, version scope, and minimal
-remediation. For migration or deployment planning, include the from/to matrix,
-artifact differences, network assumptions, rollback boundary, and unresolved
-compatibility questions.
+verification. For review, use the findings format in
+[security-review.md](references/security-review.md). For migration or
+deployment planning, include the from/to matrix, artifact differences, network
+assumptions, rollback boundary, and unresolved compatibility questions.

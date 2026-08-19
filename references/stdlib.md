@@ -1,5 +1,9 @@
 # Sway standard library
 
+This is the compiler's built-in standard library (`sway-lib-std`), implicitly
+available in every program; for the external optional sway-libs packages —
+ownership, pausable, proxy, asset base — see [sway-libs.md](sway-libs.md).
+
 Verified against `sway-lib-std/src` at Sway `v0.71.2` (commit `aa2e3b1`).
 Signatures below are the new-encoding variants, which are in effect on
 `v0.71.x`. Re-verify against the project's pinned tag before use; several

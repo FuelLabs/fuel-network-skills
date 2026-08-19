@@ -80,16 +80,19 @@ back mutation; resynchronize clients after async/preconfirmed operations. Keep
 feature-probe versions separate from signing-domain versions. Do not apply a
 second signature-domain hash to an already-prehashed digest.
 
-For predicates, assume anyone can submit a satisfying transaction. Bind all
-relevant inputs and outputs, asset amounts, recipient/change, script/contracts,
-predicate-data version/domain, witness index, nonce and supported time policy.
-Malformed data and out-of-range indices should return false cleanly rather than
-panic where possible. Estimate predicate gas on the final transaction for each
-predicate input.
+For predicates, work through the construction checklist below. Malformed data
+and out-of-range indices should return false cleanly rather than panic where
+possible. Estimate predicate gas on the final transaction for each predicate
+input.
 
 ## Bind predicate consideration and witnesses
 
-Decide explicitly whether the intent must bind:
+This is the construction checklist: how to build a correctly bound predicate
+and transaction. The "Transaction-binding predicate (signed order)" example in
+[worked-examples.md](worked-examples.md) is the imitable pattern for the
+dimensions below. Audit the result adversarially with the checklist in
+[security-review.md](security-review.md). Decide explicitly whether the intent
+must bind:
 
 - chain, application/subdomain and transaction type;
 - script bytecode, target contracts and methods;
@@ -100,14 +103,13 @@ Decide explicitly whether the intent must bind:
 - witness index, payload length and authenticated content/commitment;
 - nonce/UTXO rollover, transaction ID and expiry.
 
-Do not count the beneficiary's own matching inputs as payment. Require outputs
-minus matching beneficiary inputs to meet consideration when net gain is the
-economic invariant. Prevent one qualifying output from satisfying multiple
-predicate inputs.
+Require outputs minus matching beneficiary inputs to meet consideration when
+net gain is the economic invariant, and bind each controlled input to distinct
+consideration.
 
-Do not infer signer identity from total witness bytes, witness count or bitmap
-population. Bind signers to policy membership and reject bitmap positions
-outside the configured signer domain.
+Bind signers to configured policy membership and reject bitmap positions
+outside that domain; witness count, byte volume and bitmap population are not
+evidence of signer identity.
 
 Normalize field type widths and discriminants across SDK, script, predicate,
 auditor and contract commitment implementations. Use an explicit output
@@ -126,9 +128,10 @@ Use an SDK builder and explicit intent model. For performance:
 - estimate every predicate after all resources and change outputs are present;
 - benchmark early-invalid, late-invalid and maximum-valid shapes.
 
-Research entrypoints saved about 1,250 gas by moving independent malformed
-input/output/recipient checks before later bounded work. Do not manufacture
-that saving by dropping a required binding dimension.
+Reject invalid shapes early: moving independent malformed input, output and
+recipient checks ahead of witness, hash and bounded work is a measured saving
+(figures in [performance.md](performance.md)). Do not manufacture that saving
+by dropping a required binding dimension.
 
 Each binding dimension has a measured price (forc 0.71.2 fixtures) — treat
 these as the cost of a security property, never as removable overhead:
@@ -163,21 +166,63 @@ Use a staged flow:
 6. Sign only after confirmation.
 7. Submit only with authority, then wait for and inspect the final result.
 
+Staged in fuels-ts (`v0.103.0` APIs; confirm each signature against the
+project lockfile before reuse):
+
+```ts
+import { Provider, Wallet, ScriptTransactionRequest } from 'fuels';
+
+const provider = new Provider(NODE_URL);
+const sender = Wallet.fromPrivateKey(PRIVATE_KEY, provider);
+
+// 1-2: explicit intent, then the I/O that intent requires.
+const request = new ScriptTransactionRequest({
+  script: scriptBytecode,
+  scriptData,
+});
+request.addContractInputAndOutput(contractId);
+request.addCoinOutput(recipient, amount, assetId);
+
+// 3: fund from the sender. Check this helper's exact signature and return
+// shape against the `fuels` version pinned in the project lockfile.
+const funded = await sender.fundWithRequiredCoins(request);
+
+// Predicate estimation only prices predicate inputs; it is a no-op on a
+// request that has none. Use the returned request, not the argument.
+const estimated = await provider.estimatePredicates(funded);
+
+// 4: provider-level dry run of the exact bytes that will be submitted (not
+// the call-builder `.dryRun()`, deprecated per frontend-typescript.md).
+const { receipts } = await provider.dryRun(estimated, {
+  utxoValidation: true,
+});
+// A dry run that "succeeds" can still contain a failing receipt. Match the
+// receipt-type constant against the installed `fuels` typings.
+if (receipts.some((r) => /revert|panic/i.test(String(r.type)))) {
+  throw new Error('simulation reverted; do not sign or submit');
+}
+
+// 5-6: present network, account, recipient, assets, amounts and fees, then
+// sign only after confirmation.
+const signature = await sender.signTransaction(estimated);
+estimated.updateWitnessByOwner(sender.address, signature);
+
+// 7: submit, then wait for and inspect the final status.
+const response = await provider.sendTransaction(estimated);
+const { status, id } = await response.waitForResult();
+```
+
 Do not treat a successful simulation as final inclusion. Check transaction
 status, receipts, block/confirmation policy and application state. Decode logs
 and reverts using the exact ABI that built the call.
 
 ## Handle wallets and keys by environment
 
-- In browsers, use supported wallet connectors; never bundle private keys or
-  server secrets into client code.
-- In server-side tools, load secrets through the approved secret system and
-  avoid printing key material or full signed transactions unnecessarily.
 - Keep view-only accounts/providers separate from unlocked signers.
 - Validate that the wallet-selected chain and provider match the deployment.
-- Use isolated, funded test wallets only on local ephemeral nodes.
-- Do not fund, import, unlock, sign, broadcast or rotate keys without explicit
-  user authority.
+
+Browser connector selection and client-bundle rules are in
+[frontend-typescript.md](frontend-typescript.md).
 
 Record the final transaction ID, chain, account, asset flows, fee, receipts and
 relevant deployment IDs for production operations.

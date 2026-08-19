@@ -103,13 +103,10 @@ test wallets. Cleanly shut down spawned nodes and avoid fixed-port collisions.
 
 ## Diagnose from the outside inward
 
-1. Record exact source, tool, node, SDK, profile and command.
-2. Reduce to one failing test/transaction without changing the invariant.
-3. Inspect transaction inputs, outputs, witnesses, policies, predicate gas,
+1. Inspect transaction inputs, outputs, witnesses, policies, predicate gas,
    contract IDs and bytecode.
-4. Simulate/dry-run and decode receipts with the matching ABI.
-5. Add logs/reverts/debug output only as needed.
-6. If profile- or compiler-dependent, inspect final IR/ASM/bytecode and produce
+2. Simulate/dry-run and decode receipts with the matching ABI.
+3. If profile- or compiler-dependent, inspect final IR/ASM/bytecode and produce
    a minimal reproducer.
 
 Preserve ABI JSON for decoded panic/error locations and logs. Use
@@ -119,7 +116,9 @@ installed command's help.
 ## Verify release behavior
 
 Debug builds use a different optimization/panic profile from release builds.
-Always run release tests for deployable programs:
+Always run release tests for deployable programs. These five commands are the
+standard verification ladder that the other modules refer to; run them in
+order:
 
 ```sh
 forc fmt --check

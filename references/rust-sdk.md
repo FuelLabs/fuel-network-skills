@@ -5,15 +5,9 @@ Verified against `FuelLabs/fuels-rs` `v0.77.0` on 2026-07-23. Use the project's
 
 ## Pin the SDK and node strategy
 
-Add the top-level `fuels` crate at an exact tested requirement and commit
-`Cargo.lock`. Keep feature selection intentional:
-
-```toml
-[dependencies]
-fuels = "0.77.0"
-```
-
-At the verified release, `fuel-core-lib` enabled an embedded short-lived node;
+Add the top-level `fuels` crate at an exact tested requirement (`fuels =
+"0.77.0"`) and commit `Cargo.lock`. Keep feature selection intentional: at the
+verified release, `fuel-core-lib` enabled an embedded short-lived node;
 `rocksdb` added persistent storage support. These features enlarge the
 dependency/build surface. Prefer an external pinned `fuel-core` binary when
 that better matches production or supply-chain constraints.
@@ -44,8 +38,6 @@ before accepting Rust compilation as sufficient compatibility evidence.
 - Attach an unlocked wallet only to code that must sign. At `v0.77.0` the
   wallet model is `Wallet<Unlocked<PrivateKeySigner>>`/`Wallet<Locked>`
   behind the `Signer` trait; the older `WalletUnlocked` type no longer exists.
-- Load production secrets through the approved secret system and never log
-  them.
 - Use `launch_provider_and_get_wallet()` or the lower-level test-provider
   helpers only for isolated tests.
 
@@ -54,7 +46,29 @@ requests can race on the same UTXOs even when each request is locally valid.
 
 ## Construct calls completely
 
-For payable calls, use `CallParameters` with deliberate amount, asset and gas.
+For payable calls, use `CallParameters` with deliberate amount, asset and gas:
+
+```rust
+let counter = Counter::new(contract_id, wallet.clone());
+let base_asset = *provider.base_asset_id();
+
+let response = counter
+    .methods()
+    .deposit_and_forward(recipient, 1_000)
+    .call_params(
+        CallParameters::default()
+            .with_amount(1_000)
+            .with_asset_id(base_asset),
+    )?
+    .with_contracts(&[&registry])
+    .with_variable_output_policy(VariableOutputPolicy::EstimateMinimum)
+    .call()
+    .await?;
+
+let new_total: u64 = response.value;
+let events = response.decode_logs_with_type::<CounterEvent>()?;
+```
+
 When a Sway method calls other contracts:
 
 - prefer `with_contracts(&[...])` when generated instances are available and
@@ -81,11 +95,11 @@ offsets or witness indices.
 
 ## Handle results and errors
 
-Await final call/transaction results. Decode return values, logs, require
-reverts and receipts with the same ABI generation used to construct the call.
-Distinguish transport errors, simulation reverts, rejected transactions and
-final on-chain failure. Preserve transaction ID, block/confirmation evidence,
-gas and receipts for operational paths.
+Decode return values, logs, require reverts and receipts with the same ABI
+generation used to construct the call. Distinguish transport errors,
+simulation reverts, rejected transactions and final on-chain failure. Preserve
+transaction ID, block/confirmation evidence, gas and receipts for operational
+paths.
 
 Test:
 
