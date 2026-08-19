@@ -173,12 +173,13 @@ index, a nonce, an expiration matched against the transaction's
 `Expiration` policy, and a secp256k1 signature over all of them — and it
 enforces that no second input at the same predicate root is paid by the
 same output. It binds the remainder too: every output other than the
-designated one must be a `Change` output, and the `Change` output
-carrying this coin's own asset must return to the predicate root, so the
-signature authorizes paying the consideration rather than draining the
-coin. The block below is byte-identical to a source file that compiles
-clean under the pinned toolchain (`forc build --release` with
-`forc 0.71.2`, no warnings). It was also executed against a local
+designated one must be a `Change` output, and a `Change` output carrying
+this coin's own asset must *exist* and must return to the predicate
+root, so the signature authorizes paying the consideration rather than
+burning the remainder, displacing it to another asset's change, or
+draining the coin. The block below is byte-identical to a source file
+that compiles clean under the pinned toolchain (`forc build --release`
+with `forc 0.71.2`, no warnings). It was also executed against a local
 fuel-core 0.47.1 through fuels-ts `v0.103.0`, with only the `SIGNER`
 placeholder substituted for a test key's address and every other byte
 unchanged: a fully signed spend was accepted and paid the recipient.
@@ -186,11 +187,17 @@ Truncated, oversized and garbage predicate data, a missing or off-by-one
 `Expiration` policy, a non-`SIGNER` signature, a wrong-recipient output,
 a wrong output count, a 65-byte witness, a remainder output retyped from
 `Change` to a `Coin` paying an attacker, a `Change` remainder redirected
-to an attacker address, a duplicated consideration output (two same-root
-inputs claiming one output) and cross-UTXO replay of a previously valid
+to an attacker address, a shape carrying no own-asset `Change` at all
+(the remainder burned), that same shape with the remainder slot
+displaced to an attacker's `Change` in a different asset backed by an
+attacker input, a duplicated consideration output (two same-root inputs
+claiming one output) and cross-UTXO replay of a previously valid
 (order, signature) pair were each rejected as a clean predicate `false`
-(`PredicateReturnedNonOne`), not a VM fault. The `std::crypto` module
-paths (`message::Message`, `secp256k1::Secp256k1`,
+(`PredicateReturnedNonOne`), not a VM fault. The two remainder-removal
+shapes were rejected on dry run *and* on submission with the fuels-ts
+asset-burn safeguard explicitly disabled (`enableAssetBurn: true`), so
+the rejection is the predicate's, not a client-side policy. The
+`std::crypto` module paths (`message::Message`, `secp256k1::Secp256k1`,
 `signature::Signature`) and the constructors used here are pinned in
 [stdlib.md](stdlib.md), verified against the tag. Build the matching
 transaction per [transactions-and-wallets.md](transactions-and-wallets.md);
@@ -326,28 +333,38 @@ fn main() -> bool {
 
         // Remainder: the signature authorizes paying the consideration, not
         // draining the coin. Every other output must therefore be a `Change`
-        // output, and the change carrying this coin's own asset must roll
-        // back to this predicate root — the VM allows at most one `Change`
-        // per asset and credits it the whole per-asset remainder, so this
-        // pins the leftover. A fee payer's change in a *different* asset is
-        // that payer's own and may go anywhere.
+        // output, and a `Change` output carrying this coin's own asset is
+        // REQUIRED to exist and to roll back to this predicate root. Only
+        // validating such an output when one happens to be present would be
+        // vacuous: an assembler could drop it and burn the remainder, or
+        // spend an input in some other asset and hand the remainder slot to
+        // that asset's change instead. The VM allows at most one `Change`
+        // per asset and credits it the whole per-asset remainder, so "own
+        // asset change exists and is owned by this root" pins the leftover.
+        // A fee payer's change in a *different* asset is that payer's own
+        // and may go anywhere.
         let my_asset = input_asset_id(my_index);
         let outputs = output_count().as_u64();
+        let mut own_change_seen = false;
         let mut j = 0;
         while j < outputs {
             if j != order.output_index {
                 match output_type(j) {
                     Some(Output::Change) => {
-                        if output_asset_id(j) == my_asset
-                            && output_asset_to(j) != my_owner
-                        {
-                            return false;
+                        if output_asset_id(j) == my_asset {
+                            if output_asset_to(j) != my_owner {
+                                return false;
+                            }
+                            own_change_seen = true;
                         }
                     },
                     _ => return false,
                 }
             }
             j += 1;
+        }
+        if !own_change_seen {
+            return false;
         }
 
         // Authorization: one witness signature over the whole committed
@@ -429,22 +446,31 @@ Verification notes:
 - Value-flow model: this is a payout/escrow-shaped order with a protected
   remainder. The signature authorizes paying the bound consideration out of
   the bound UTXO and nothing else, so every non-consideration output must be
-  a `Change` output and the change for this coin's own asset must roll back
-  to the predicate root. The VM permits at most one `Change` output per asset
-  and credits it the entire per-asset remainder, so pinning that one output
-  pins everything the consideration did not spend. Change in a *different*
-  asset is left free because it is the fee payer's own value. Structural
-  consequence: when the order's asset is the base asset, a third party cannot
-  fee-fund the transaction and also take its own base-asset change — the one
-  permitted base-asset `Change` output is already committed to the predicate
-  root — so in that case the predicate coin funds its own fee.
+  a `Change` output and a `Change` output for this coin's own asset must
+  exist and roll back to the predicate root. Requiring existence is the
+  load-bearing half: a loop that only checks the owner *when* an own-asset
+  change happens to be present is vacuously satisfied by a transaction that
+  has none, which lets an assembler burn the remainder outright, or spend an
+  input in some other asset and hand the remainder slot to that asset's
+  `Change`. Neither shape touches a signed field, and the fuels-ts asset-burn
+  safeguard is a client-side convenience, not an authorization boundary — a
+  caller can pass `enableAssetBurn: true` or submit through another client.
+  The VM permits at most one `Change` output per asset and credits it the
+  entire per-asset remainder, so requiring that one output — and only that
+  one — pins everything the consideration did not spend. Change in a
+  *different* asset is left free because it is the fee payer's own value.
+  Structural consequence: when the order's asset is the base asset, a third
+  party cannot fee-fund the transaction and also take its own base-asset
+  change — the one permitted base-asset `Change` output is already committed
+  to the predicate root — so in that case the predicate coin funds its own fee.
 - The full-UTXO maker order is the deliberate relaxation: drop the remainder
-  loop and the signature then authorizes spending the *entire* fixed UTXO in
-  exchange for the bound minimum consideration, leaving the surplus to
-  whoever assembles the transaction. That is a legitimate design, but a
-  different one, and under it the net-gain caveat below is no longer a side
-  note — it becomes the operative model, because the amount bound on the
-  consideration output is then the only thing protecting the signer.
+  loop together with the own-asset `Change` requirement, and the signature
+  then authorizes spending the *entire* fixed UTXO in exchange for the bound
+  minimum consideration, leaving the surplus to whoever assembles the
+  transaction. That is a legitimate design, but a different one, and under
+  it the net-gain caveat below is no longer a side note — it becomes the
+  operative model, because the amount bound on the consideration output is
+  then the only thing protecting the signer.
 - The signer's own inputs are not netted out here: the consideration check
   bounds a gross output amount. When the recipient can supply inputs to the
   same transaction, bind net gain (outputs minus that party's matching

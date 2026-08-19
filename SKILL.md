@@ -5,7 +5,7 @@ description: Use for any task involving Fuel, FuelVM, Sway, Forc, Fuelup, fuels-
 
 # Fuel Network Skills
 
-Last updated: **2026-08-19T16:53:23-04:00** (`America/New_York`).
+Last updated: **2026-08-19T19:24:17-04:00** (`America/New_York`).
 
 ## Verification baseline
 

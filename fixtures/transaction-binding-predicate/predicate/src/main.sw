@@ -123,28 +123,38 @@ fn main() -> bool {
 
         // Remainder: the signature authorizes paying the consideration, not
         // draining the coin. Every other output must therefore be a `Change`
-        // output, and the change carrying this coin's own asset must roll
-        // back to this predicate root — the VM allows at most one `Change`
-        // per asset and credits it the whole per-asset remainder, so this
-        // pins the leftover. A fee payer's change in a *different* asset is
-        // that payer's own and may go anywhere.
+        // output, and a `Change` output carrying this coin's own asset is
+        // REQUIRED to exist and to roll back to this predicate root. Only
+        // validating such an output when one happens to be present would be
+        // vacuous: an assembler could drop it and burn the remainder, or
+        // spend an input in some other asset and hand the remainder slot to
+        // that asset's change instead. The VM allows at most one `Change`
+        // per asset and credits it the whole per-asset remainder, so "own
+        // asset change exists and is owned by this root" pins the leftover.
+        // A fee payer's change in a *different* asset is that payer's own
+        // and may go anywhere.
         let my_asset = input_asset_id(my_index);
         let outputs = output_count().as_u64();
+        let mut own_change_seen = false;
         let mut j = 0;
         while j < outputs {
             if j != order.output_index {
                 match output_type(j) {
                     Some(Output::Change) => {
-                        if output_asset_id(j) == my_asset
-                            && output_asset_to(j) != my_owner
-                        {
-                            return false;
+                        if output_asset_id(j) == my_asset {
+                            if output_asset_to(j) != my_owner {
+                                return false;
+                            }
+                            own_change_seen = true;
                         }
                     },
                     _ => return false,
                 }
             }
             j += 1;
+        }
+        if !own_change_seen {
+            return false;
         }
 
         // Authorization: one witness signature over the whole committed

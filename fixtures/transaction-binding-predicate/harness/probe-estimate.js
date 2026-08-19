@@ -5,13 +5,17 @@
  *
  *  1. Does fuel-core 0.47.1's `estimatePredicates` GraphQL mutation reject a
  *     predicate that returns false, or does it happily report gas used?
- *     (Raw HTTP, no SDK error handling in the way.)
+ *     (Raw HTTP, no SDK error handling in the way.) Expected: estimation
+ *     ACCEPTS it and meters gas, while the dry run REJECTS it.
  *
  *  2. Are the Sway `Hash` byte widths for u16/u32 load-bearing? Sign a digest
  *     built with u16/u32 padded out to full 8-byte words instead of 2/4
  *     bytes; the predicate must reject it.
  *
  * Same prerequisites as run.js: `npm ci`, `FUEL_CORE_PATH`, and forc on PATH.
+ *
+ * Exit-code contract: both probes are assertions, not printouts. The run exits
+ * 0 only if every expectation held, and 1 otherwise (a crash also exits 1).
  */
 const {
   Provider,
@@ -48,6 +52,25 @@ const { bytecode: BYTECODE, abi: ABI } = buildPredicate(SIGNER_ADDRESS);
 
 const PAY_AMOUNT = bn(1_000_000);
 
+// Same exact rejection class run.js asserts: the predicate ran and returned
+// false, reported by fuel-core as `PredicateVerificationFailed(Panic { index:
+// N, reason: PredicateReturnedNonOne })`. Both halves are required — the
+// wrapper alone also covers VM faults such as `OutOfGas`, which would not
+// prove anything about the predicate's verdict.
+const PREDICATE_FALSE = /PredicateVerificationFailed[\s\S]*PredicateReturnedNonOne/;
+
+const results = [];
+let failed = 0;
+
+const check = (label, pass, detail) => {
+  results.push({ label, pass, detail });
+  if (!pass) {
+    failed += 1;
+  }
+  console.log(`  -> ${pass ? 'PASS' : 'FAIL'}: ${label}${detail ? `\n     ${detail}` : ''}`);
+  return pass;
+};
+
 /** Same 7-tuple, but u16/u32 written as full 8-byte words (the WRONG layout). */
 function wordPaddedDigest({ chainId, utxoTxId, utxoOutputIndex, order }) {
   return sha256(
@@ -68,6 +91,7 @@ function wordPaddedDigest({ chainId, utxoTxId, utxoOutputIndex, order }) {
   );
 }
 
+/** Returns the number of failed assertions; 0 means both probes held. */
 async function main() {
   const snapshotConfig = JSON.parse(JSON.stringify(defaultSnapshotConfigs));
   snapshotConfig.chainConfig.consensus_parameters.V2.chain_id = 9889;
@@ -125,6 +149,8 @@ async function main() {
     };
 
     // ---- probe 1: raw estimatePredicates on a deliberately false predicate.
+    // 10 bytes of predicate data cannot be a 126-byte `Order`, so the
+    // predicate returns false — yet estimation is expected to meter it anyway.
     const bogus = build(signDigest(SIGNER_PRIVATE_KEY, orderDigest(digestArgs)), new Uint8Array(10));
     const raw = await fetch(node.url, {
       method: 'POST',
@@ -140,16 +166,28 @@ async function main() {
     console.log('http status:', raw.status);
     console.log(JSON.stringify(body, null, 2));
 
+    const estimatedGas = body?.data?.estimatePredicates?.inputs?.[0]?.predicateGasUsed;
+    check(
+      'estimatePredicates ACCEPTS a false predicate and meters it (estimation is not acceptance)',
+      raw.status === 200 && !body?.errors && estimatedGas !== undefined && bn(estimatedGas).gt(0),
+      `http=${raw.status} predicateGasUsed=${estimatedGas} errors=${JSON.stringify(body?.errors)}`
+    );
+
     // And what the same tx does at dryRun, once the estimated gas is applied:
     await provider.estimatePredicates(bogus);
     const { maxFee: bogusFee } = await provider.estimateTxGasAndFee({ transactionRequest: bogus });
     bogus.maxFee = bogusFee;
+    let dryRunRejection = null;
     try {
       await provider.dryRun(bogus, { utxoValidation: true, estimateTxDependencies: false });
-      console.log('dryRun: ACCEPTED (unexpected)');
     } catch (err) {
-      console.log('dryRun rejected:', describeError(err).split('\n').join(' '));
+      dryRunRejection = describeError(err).split('\n').join(' ');
     }
+    check(
+      'the same false predicate is REJECTED at dry run (PredicateReturnedNonOne)',
+      dryRunRejection !== null && PREDICATE_FALSE.test(dryRunRejection),
+      dryRunRejection === null ? 'dryRun ACCEPTED it' : `dryRun rejected: ${dryRunRejection}`
+    );
 
     // ---- probe 2: word-padded (wrong-width) digest.
     console.log('\n=== probe 2: digest with u16/u32 padded to 8-byte words ===');
@@ -161,19 +199,34 @@ async function main() {
     await provider.estimatePredicates(req);
     const { maxFee } = await provider.estimateTxGasAndFee({ transactionRequest: req });
     req.maxFee = maxFee;
+    let paddedRejection = null;
     try {
       await provider.dryRun(req, { utxoValidation: true, estimateTxDependencies: false });
-      console.log('RESULT: ACCEPTED -> the doc byte widths would be WRONG');
     } catch (err) {
-      console.log('RESULT: rejected ->', describeError(err).split('\n').join(' '));
+      paddedRejection = describeError(err).split('\n').join(' ');
     }
+    check(
+      'a signature over the word-padded digest is REJECTED (the doc byte widths are load-bearing)',
+      correct !== padded && paddedRejection !== null && PREDICATE_FALSE.test(paddedRejection),
+      paddedRejection === null
+        ? 'ACCEPTED -> the doc byte widths would be WRONG'
+        : `rejected: ${paddedRejection}`
+    );
+
+    console.log('\n================ SUMMARY ================');
+    results.forEach((r) => console.log(`${(r.pass ? 'PASS' : 'FAIL').padEnd(6)} ${r.label}`));
+    console.log(
+      `\n${results.length - failed}/${results.length} checks passed` +
+        (failed ? ` — ${failed} FAILED` : '')
+    );
+    return failed;
   } finally {
     node.cleanup();
   }
 }
 
 main().then(
-  () => process.exit(0),
+  (failedCount) => process.exit(failedCount === 0 ? 0 : 1),
   (e) => {
     console.error('FATAL', e);
     process.exit(1);
