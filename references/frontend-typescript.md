@@ -95,8 +95,9 @@ wallet; do not assume it is appropriate outside local development.
 - Use `.get()` for read-only execution where supported, `.simulate()` for a
   transaction-like preview, and `.call()` only for intended submission. At
   `v0.103.0`, `.dryRun()` and `getTransactionCost()` are deprecated (prefer
-  `.get()` and `fundWithRequiredCoins`), and `addSigners` is deprecated in
-  favor of explicitly added witnesses.
+  `.get()`, and `fundWithRequiredCoins` on an invocation scope — for a raw
+  transaction request the pinned replacement is `provider.assembleTx`), and
+  `addSigners` is deprecated in favor of explicitly added witnesses.
 - Await `waitForResult()` and inspect status, value, receipts, gas and
   transaction ID; do not treat transaction creation as confirmation.
 

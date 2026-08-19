@@ -46,11 +46,16 @@ requests can race on the same UTXOs even when each request is locally valid.
 
 ## Construct calls completely
 
-For payable calls, use `CallParameters` with deliberate amount, asset and gas:
+For payable calls, use `CallParameters` with deliberate amount, asset and gas.
+The snippet below is a fragment, not a self-contained program: it assumes the
+`abigen!`-generated `Counter` bindings from earlier in this module plus a
+deployed `contract_id`, a connected `provider`, a funded `wallet`, a generated
+`registry` instance and a `CounterEvent` log type from the same ABI.
 
 ```rust
 let counter = Counter::new(contract_id, wallet.clone());
-let base_asset = *provider.base_asset_id();
+let consensus_parameters = provider.consensus_parameters().await?;
+let base_asset = *consensus_parameters.base_asset_id();
 
 let response = counter
     .methods()

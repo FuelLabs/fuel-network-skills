@@ -1,0 +1,9 @@
+[[package]]
+name = "predicate_fixture"
+source = "member"
+dependencies = ["std"]
+
+[[package]]
+name = "std"
+version = "0.71.2"
+source = "registry+std?0.71.2#QmWgKtKd6BtbzaVeyKJVGrAZvfrCzoJBZNiDVru12FRu6M!"

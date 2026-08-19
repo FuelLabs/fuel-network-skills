@@ -1,0 +1,18 @@
+{
+  "name": "transaction-binding-predicate-harness",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local fuel-core harness for the transaction-binding predicate fixture.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node run.js",
+    "probe": "node probe-estimate.js"
+  },
+  "dependencies": {
+    "fuels": "0.103.0"
+  }
+}

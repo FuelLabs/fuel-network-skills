@@ -1,9 +1,15 @@
 # Worked examples
 
-Complete programs verified against the Sway `v0.71.2` repository. Sources are
-CI-built examples (`examples/` workspace) or e2e-tested programs
+Complete programs verified against the Sway `v0.71.2` repository. Every example
+below except the transaction-binding predicate is taken from a CI-built example
+(`examples/` workspace) or an e2e-tested program
 (`test/src/e2e_vm_tests/test_programs/should_pass/`) at that tag — cited per
-example. Adapt names, not structure.
+example. The transaction-binding predicate is composed here rather than sourced
+upstream, and is instead backed by the fixture checked in at
+[`fixtures/transaction-binding-predicate/`](../fixtures/transaction-binding-predicate/):
+its source compiles under the pinned toolchain, a `forc test` project pins the
+`Order` encoding length, and an optional local-node harness replays the
+runtime matrix. Adapt names, not structure.
 
 ## Counter contract with storage
 
@@ -159,19 +165,40 @@ transaction shape — see the next example.
 
 ## Transaction-binding predicate (signed order)
 
-Pattern skeleton, not a CI-built example: composed from the getters in
-[stdlib.md](stdlib.md) and the predicate-legal opcode list in
-[fuelvm-assembly.md](fuelvm-assembly.md). It binds chain, the input index
-the order claims, one designated output (type, recipient, asset, amount),
-the exact output count, the witness index, a nonce, and a secp256k1
-signature over all of them — and it enforces that no second predicate input
-claims the same output. One surface stays unpinned: the `std::crypto` module
-paths (`message::Message`, `secp256k1::Secp256k1`, `signature::Signature`)
-and `Message::from(b256)` are named but not signed off in
-[stdlib.md](stdlib.md), so confirm them at compile time before relying on
-this shape. Build the matching transaction per
-[transactions-and-wallets.md](transactions-and-wallets.md); audit it against
-[security-review.md](security-review.md).
+Composed from the getters in [stdlib.md](stdlib.md) and the
+predicate-legal opcode list in [fuelvm-assembly.md](fuelvm-assembly.md).
+It binds chain, the UTXO this predicate is spending, one designated output
+(type, recipient, asset, amount), the exact output count, the witness
+index, a nonce, an expiration matched against the transaction's
+`Expiration` policy, and a secp256k1 signature over all of them — and it
+enforces that no second input at the same predicate root is paid by the
+same output. It binds the remainder too: every output other than the
+designated one must be a `Change` output, and the `Change` output
+carrying this coin's own asset must return to the predicate root, so the
+signature authorizes paying the consideration rather than draining the
+coin. The block below is byte-identical to a source file that compiles
+clean under the pinned toolchain (`forc build --release` with
+`forc 0.71.2`, no warnings). It was also executed against a local
+fuel-core 0.47.1 through fuels-ts `v0.103.0`, with only the `SIGNER`
+placeholder substituted for a test key's address and every other byte
+unchanged: a fully signed spend was accepted and paid the recipient.
+Truncated, oversized and garbage predicate data, a missing or off-by-one
+`Expiration` policy, a non-`SIGNER` signature, a wrong-recipient output,
+a wrong output count, a 65-byte witness, a remainder output retyped from
+`Change` to a `Coin` paying an attacker, a `Change` remainder redirected
+to an attacker address, a duplicated consideration output (two same-root
+inputs claiming one output) and cross-UTXO replay of a previously valid
+(order, signature) pair were each rejected as a clean predicate `false`
+(`PredicateReturnedNonOne`), not a VM fault. The `std::crypto` module
+paths (`message::Message`, `secp256k1::Secp256k1`,
+`signature::Signature`) and the constructors used here are pinned in
+[stdlib.md](stdlib.md), verified against the tag. Build the matching
+transaction per [transactions-and-wallets.md](transactions-and-wallets.md);
+audit it against [security-review.md](security-review.md). Every claim in this
+paragraph is reproducible from
+[`fixtures/transaction-binding-predicate/`](../fixtures/transaction-binding-predicate/),
+which holds that source file, the encoding-length test and the local-node
+harness.
 
 ```sway
 predicate;
@@ -182,12 +209,15 @@ use std::crypto::message::Message;
 use std::crypto::secp256k1::Secp256k1;
 use std::crypto::signature::Signature;
 use std::hash::{Hash, sha256};
-use std::inputs::{input_count, input_predicate_data};
+use std::inputs::{
+    Input, input_asset_id, input_coin_owner, input_count,
+    input_predicate_data, input_predicate_data_length, input_type,
+};
 use std::outputs::{
     Output, output_amount, output_asset_id, output_asset_to, output_count,
     output_type,
 };
-use std::tx::tx_witness_data;
+use std::tx::{tx_expiration, tx_witness_data, tx_witness_data_length};
 
 // Application/version domain tag: ASCII "order.v1", zero-extended to b256.
 const DOMAIN: b256 =
@@ -198,7 +228,6 @@ const SIGNER: Address =
 
 // Decoded from this input's predicate data; every field is in the digest.
 struct Order {
-    input_index: u64,   // the index this order claims for its own input
     output_index: u64,  // the one output that pays the recipient
     witness_index: u64,
     output_count: u16,
@@ -206,78 +235,150 @@ struct Order {
     asset: AssetId,
     amount: u64,
     nonce: b256,
+    expiration: u32,    // must equal the tx `Expiration` policy
 }
 
-fn main(order: Order) -> bool {
-    // Shape: exact output count, and the input at the claimed index must
-    // carry predicate data with this same nonce (the signature below is
-    // what binds the rest of the order).
-    if output_count() != order.output_count {
+// Encoding-v1 byte length of `Order`: 8 + 8 + 2 + 32 + 32 + 8 + 32 + 4.
+// Re-derive this from abi-and-encoding.md if any field is added,
+// removed, reordered or retyped — the length gates below depend on it.
+const ORDER_ENCODED_LEN: u64 = 126;
+
+// No parameters: a typed `main` argument would be ABI-decoded by the
+// compiler-generated predicate entry before the first line below runs.
+fn main() -> bool {
+    // Ground truth, not attacker data: GM 0x03 is the index of the input
+    // currently being verified (fuelvm-assembly.md). This is the same read
+    // `std::auth::predicate_address()` performs at this tag.
+    let my_index = asm(r1) {
+        gm r1 i3;
+        r1: u64
+    };
+
+    // Gate this input before anything is decoded from it: it must be a
+    // Coin, and its predicate data must be exactly one encoded `Order`.
+    match input_type(my_index) {
+        Some(Input::Coin) => {},
+        _ => return false,
+    }
+    if input_predicate_data_length(my_index) != Some(ORDER_ENCODED_LEN) {
         return false;
     }
-    if let Some(mine) = input_predicate_data::<Order>(order.input_index) {
-        if mine.nonce != order.nonce {
+    if let Some(order) = input_predicate_data::<Order>(my_index) {
+        // Bind the actual coin this predicate is spending, by UTXO ID:
+        // GTF txId 0x201 and outputIndex 0x202 (fuelvm-assembly.md). No std
+        // getter returns these at this tag, so read them with `__gtf`.
+        let utxo_txid = __gtf::<b256>(my_index, 0x201);
+        let utxo_oidx = __gtf::<u64>(my_index, 0x202);
+
+        // Shape: the signed order fixes the exact output count.
+        if output_count() != order.output_count {
             return false;
         }
-    } else {
-        return false;
-    }
 
-    // Uniqueness: no other predicate input may be paid by the same output.
-    let inputs = input_count().as_u64();
-    let mut i = 0;
-    while i < inputs {
-        if i != order.input_index {
-            if let Some(other) = input_predicate_data::<Order>(i) {
-                if other.output_index == order.output_index {
-                    return false;
+        // Deadline: the transaction must carry exactly the signed
+        // `Expiration` policy, which the digest below also commits to. A
+        // policy chosen only by the builder is unsigned, so a relayer could
+        // drop or extend it; requiring the signed value here cannot be.
+        if tx_expiration() != Some(order.expiration) {
+            return false;
+        }
+
+        // Uniqueness: no other input at this same predicate root may be paid
+        // by the same output. Only inputs that share this input's owner (the
+        // predicate root) and carry an exactly `Order`-sized predicate data
+        // are decoded — an ordinary signed fee coin is never ABI-decoded.
+        let my_owner = input_coin_owner(my_index);
+        let inputs = input_count().as_u64();
+        let mut i = 0;
+        while i < inputs {
+            if i != my_index {
+                if input_coin_owner(i) == my_owner
+                    && input_predicate_data_length(i) == Some(ORDER_ENCODED_LEN)
+                {
+                    if let Some(other) = input_predicate_data::<Order>(i) {
+                        if other.output_index == order.output_index {
+                            return false;
+                        }
+                    }
                 }
             }
+            i += 1;
         }
-        i += 1;
-    }
 
-    // Consideration: the bound output is a Coin paying exactly this
-    // recipient and asset, for at least the promised amount.
-    let pays_recipient = match (
-        output_type(order.output_index),
-        output_asset_to(order.output_index),
-        output_asset_id(order.output_index),
-        output_amount(order.output_index),
-    ) {
-        (Some(Output::Coin), Some(to), Some(asset), Some(amount)) => {
-            to == order.recipient
-                && asset == order.asset
-                && amount >= order.amount
-        },
-        _ => false,
-    };
-    if !pays_recipient {
-        return false;
-    }
+        // Consideration: the bound output is a Coin paying exactly this
+        // recipient and asset, for at least the promised amount.
+        let pays_recipient = match (
+            output_type(order.output_index),
+            output_asset_to(order.output_index),
+            output_asset_id(order.output_index),
+            output_amount(order.output_index),
+        ) {
+            (Some(Output::Coin), Some(to), Some(asset), Some(amount)) => {
+                to == order.recipient
+                    && asset == order.asset
+                    && amount >= order.amount
+            },
+            _ => false,
+        };
+        if !pays_recipient {
+            return false;
+        }
 
-    // Authorization: one witness signature over the whole committed order.
-    let digest = sha256((
-        DOMAIN,
-        chain_id(),
-        (
-            order.input_index,
-            order.output_index,
-            order.witness_index,
-            order.output_count,
-        ),
-        (order.recipient, order.asset, order.amount),
-        order.nonce,
-    ));
-    match tx_witness_data::<B512>(order.witness_index) {
-        Some(witness) => {
-            let sig = Signature::Secp256k1(Secp256k1::from(witness));
-            match sig.address(Message::from(digest)) {
-                Ok(signer) => signer == SIGNER,
-                Err(_) => false,
+        // Remainder: the signature authorizes paying the consideration, not
+        // draining the coin. Every other output must therefore be a `Change`
+        // output, and the change carrying this coin's own asset must roll
+        // back to this predicate root — the VM allows at most one `Change`
+        // per asset and credits it the whole per-asset remainder, so this
+        // pins the leftover. A fee payer's change in a *different* asset is
+        // that payer's own and may go anywhere.
+        let my_asset = input_asset_id(my_index);
+        let outputs = output_count().as_u64();
+        let mut j = 0;
+        while j < outputs {
+            if j != order.output_index {
+                match output_type(j) {
+                    Some(Output::Change) => {
+                        if output_asset_id(j) == my_asset
+                            && output_asset_to(j) != my_owner
+                        {
+                            return false;
+                        }
+                    },
+                    _ => return false,
+                }
             }
-        },
-        None => false,
+            j += 1;
+        }
+
+        // Authorization: one witness signature over the whole committed
+        // order, including the UTXO this predicate is spending. Length-gate
+        // the witness to exactly 64 bytes — for a reference type such as
+        // `B512`, `tx_witness_data` copies the GTF-reported length and
+        // reinterprets it, with no check against the requested type.
+        let digest = sha256((
+            DOMAIN,
+            chain_id(),
+            (utxo_txid, utxo_oidx),
+            (order.output_index, order.witness_index, order.output_count),
+            (order.recipient, order.asset, order.amount),
+            order.nonce,
+            order.expiration,
+        ));
+        if tx_witness_data_length(order.witness_index) != Some(64) {
+            return false;
+        }
+        match tx_witness_data::<B512>(order.witness_index) {
+            Some(witness) => {
+                let sig = Signature::Secp256k1(Secp256k1::from(witness));
+                match sig.address(Message::from(digest)) {
+                    Ok(signer) => signer == SIGNER,
+                    Err(_) => false,
+                }
+            },
+            None => false,
+        }
+    } else {
+        false
     }
 }
 ```
@@ -288,29 +389,74 @@ Verification notes:
   `assert` or `require` appears. `RVRT` is illegal in predicates, so a panic
   on missing data fails with `ContractInstructionNotAllowed` instead of
   returning `false`.
-- Only predicate-legal operations appear: `GTF` getters, `GM` (`chain_id`),
-  sha256 and secp256k1 recovery, ALU and jumps. No storage, no `CALL`, no
-  `BHEI`/`TIME`, no `LOG`. Expiry is deliberately not checked here — bind it
-  through the tx `Expiration` policy when the order needs a deadline.
-- `order.input_index` is attacker-supplied data, not the running input's real
-  index, and no pinned `std` getter returns that index. A spoofed index is
-  self-defeating here: the input it names must carry the same nonce, and the
-  uniqueness loop then reaches this input itself, sees its own
-  `output_index`, and returns `false`. To check the index directly instead,
-  read `GM` 0x03 (verifying-predicate index) from an `asm` block
-  ([fuelvm-assembly.md](fuelvm-assembly.md)).
-- The nonce only domain-separates orders. A predicate is stateless, so the
-  same (order, signature) pair can be attached to another UTXO at the same
-  predicate root in a different transaction. For instance-level replay
-  protection, bind `tx_id()` or the input's UTXO ID (`GTF` txId `0x201` plus
-  outputIndex `0x202`, [fuelvm-assembly.md](fuelvm-assembly.md)) into the
-  digest, or fund exactly one UTXO per predicate root.
-- The digest keeps outer tuple arity at 5 and nests the rest: `Hash` stops at
+- Only predicate-legal operations appear: `GTF` getters (via `std` and via
+  the `__gtf` intrinsic), `GM` (`chain_id`, and `GM 0x03` in the one `asm`
+  block), sha256 and secp256k1 recovery, ALU and jumps. No storage, no
+  `CALL`, no `BHEI`/`TIME`, no `LOG`.
+- `main` deliberately takes no parameters. A typed `main` parameter is not
+  free input: the compiler-generated predicate entry calls
+  `decode_predicate_data::<(Order,)>()` and passes the result in, so the
+  decode happens before the first statement of `main` and no gate written
+  there can precede it. Truncated or malformed predicate data would reach
+  the unchecked decoder first. With zero parameters the entry decodes
+  nothing, so every `input_predicate_data::<Order>` call in the body sits
+  behind a length gate that can reject the payload before it is decoded.
+- Every decode in this predicate is length-gated first. This input's
+  predicate data must measure exactly `ORDER_ENCODED_LEN` before it is
+  decoded as an `Order`, and the witness must measure exactly 64 bytes
+  before it is read as a `B512`: `input_predicate_data` blind-decodes any
+  Coin or Message input, and `tx_witness_data` does not validate the
+  witness against the requested type ([stdlib.md](stdlib.md)). Same-root
+  filtering in the uniqueness loop (`input_coin_owner(i) ==
+  input_coin_owner(my_index)`) keeps unrelated signed coins — the fee
+  inputs, above all — from ever being ABI-decoded.
+- The deadline is enforced from both sides: `order.expiration` is part of
+  the signed digest, and `tx_expiration() != Some(order.expiration)` fails
+  the predicate. Binding only one side is not enough — a policy the builder
+  sets but the signature does not cover is attacker-removable, since the
+  custom order signature authenticates its own digest rather than the
+  transaction ID, so a relayer could resubmit the still-unspent order with
+  the `Expiration` policy dropped or extended.
+- Replay across UTXOs is closed by the digest, which binds this input's own
+  UTXO ID (`GTF` txId `0x201` plus outputIndex `0x202`). The same (order,
+  signature) pair attached to a different coin at the same predicate root
+  recovers a different signer and fails. The nonce is application-level order
+  identity — how the signer distinguishes two otherwise identical orders —
+  not the replay defence.
+- The digest keeps outer tuple arity at 7 and nests the rest: `Hash` stops at
   arity 8, so nest or stream through `Hasher` rather than flattening
   ([stdlib.md](stdlib.md)).
-- The signer's own inputs are not netted out here. When the recipient can
-  supply inputs to the same transaction, bind net gain (outputs minus that
-  party's matching inputs), not the gross output amount.
+- Value-flow model: this is a payout/escrow-shaped order with a protected
+  remainder. The signature authorizes paying the bound consideration out of
+  the bound UTXO and nothing else, so every non-consideration output must be
+  a `Change` output and the change for this coin's own asset must roll back
+  to the predicate root. The VM permits at most one `Change` output per asset
+  and credits it the entire per-asset remainder, so pinning that one output
+  pins everything the consideration did not spend. Change in a *different*
+  asset is left free because it is the fee payer's own value. Structural
+  consequence: when the order's asset is the base asset, a third party cannot
+  fee-fund the transaction and also take its own base-asset change — the one
+  permitted base-asset `Change` output is already committed to the predicate
+  root — so in that case the predicate coin funds its own fee.
+- The full-UTXO maker order is the deliberate relaxation: drop the remainder
+  loop and the signature then authorizes spending the *entire* fixed UTXO in
+  exchange for the bound minimum consideration, leaving the surplus to
+  whoever assembles the transaction. That is a legitimate design, but a
+  different one, and under it the net-gain caveat below is no longer a side
+  note — it becomes the operative model, because the amount bound on the
+  consideration output is then the only thing protecting the signer.
+- The signer's own inputs are not netted out here: the consideration check
+  bounds a gross output amount. When the recipient can supply inputs to the
+  same transaction, bind net gain (outputs minus that party's matching
+  inputs), not the gross output amount.
+- Predicate estimation is not acceptance. `estimatePredicates` — and the
+  estimation `assembleTx` performs — meters gas for a predicate that
+  returns `false` exactly as it does for one that returns `true`: on
+  fuel-core 0.47.1 deliberately failing predicates still estimated
+  successfully. Only dry run and submission enforce the predicate, so a
+  passing `estimatePredicates` must never be read as "the predicate
+  accepts"; [transactions-and-wallets.md](transactions-and-wallets.md)
+  shows the signed dry-run gate that does decide it.
 - The predicate owner is `sha256(0x4655454C ++ code_root)`, so any edit —
   including a changed `SIGNER` or `DOMAIN` constant — changes the address
   that must own the coin ([abi-and-encoding.md](abi-and-encoding.md)).

@@ -81,8 +81,8 @@ For compound structures, co-locate values sharing lifecycle/update boundaries.
 Mutate mirrored indexes atomically; reject duplicate external IDs and missing
 indexes rather than let defaults hide partial writes. Encode linkage once in a
 typed variant such as `Parent(id)`, validate IDs before storage access and
-never map decode failure to absence. Use named composite keys/discriminants and
-prove exact width/slot compatibility before upgrading.
+never map an absent or invalid slot read to a live default. Use named composite
+keys/discriminants and prove exact width/slot compatibility before upgrading.
 
 ```sway
 enum Link {          // linkage lives in one typed variant, not two fields
@@ -91,16 +91,16 @@ enum Link {          // linkage lives in one typed variant, not two fields
 }
 // declared as: link: StorageMap<u64, Link> = StorageMap {},
 
-// Good: absence is its own handled case, distinct from any decoded value.
+// Good: absence is its own handled case, distinct from any stored value.
 match storage.link.get(id).try_read() {
     Some(Link::Parent(parent)) => attach_to(parent),
     Some(Link::Root) => detach(),
     None => panic "unknown node",
 }
 
-// Bad: a never-written entry (or one whose read fails) silently becomes a
-// root, so partial writes and decode failures are indistinguishable from
-// "this node has no parent".
+// Bad: an uninitialized entry (try_read returns None when the slot read is
+// not valid) silently becomes a root, so partial writes are indistinguishable
+// from "this node has no parent".
 let link = storage.link.get(id).try_read().unwrap_or(Link::Root);
 ```
 

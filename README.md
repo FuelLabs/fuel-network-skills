@@ -38,6 +38,9 @@ Forc, Fuelup, `fuels-ts`, or `fuels-rs` tasks.
   versions from primary sources.
 - `scripts/diff_fuel_artifacts.py` compares Fuel ABIs, bytecode, IDs, storage,
   configurables, and generated bindings.
+- `fixtures/transaction-binding-predicate/` holds the compilable source, the
+  `forc test` encoding check, and the optional local-node harness behind the
+  transaction-binding predicate in `references/worked-examples.md`.
 - `evals/evals.json` provides baseline behavior evaluations.
 
 The helper scripts require Python 3.11 or newer.
@@ -51,6 +54,11 @@ python3 scripts/validate_repository.py
 python3 -m compileall -q scripts
 python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 ```
+
+`validate_repository.py` also runs the drift check that keeps the documented
+transaction-binding predicate byte-identical to its fixture source; the deeper
+`forc` and local-node verification is manual, per
+[`fixtures/transaction-binding-predicate/README.md`](fixtures/transaction-binding-predicate/README.md).
 
 Maintainers: update the `Last updated` timestamp in `SKILL.md` whenever any
 file in this skill changes.

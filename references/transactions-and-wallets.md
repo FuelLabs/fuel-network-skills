@@ -11,7 +11,7 @@ transaction.
 - [Bind authorization](#bind-authorization)
 - [Bind predicate consideration and witnesses](#bind-predicate-consideration-and-witnesses)
 - [Construct readable efficient transactions](#construct-readable-efficient-transactions)
-- [Separate read, simulate, sign and submit](#separate-read-simulate-sign-and-submit)
+- [Separate read, approve, sign, simulate and submit](#separate-read-approve-sign-simulate-and-submit)
 - [Handle wallets and keys by environment](#handle-wallets-and-keys-by-environment)
 
 ## Model the whole transaction
@@ -154,16 +154,16 @@ Normalizing one predicate's witness-index width to the auditor's `u64`
 encoding saved 54 gas/128 B *and* removed a cross-package root discrepancy —
 consistent widths improve both cost and correctness.
 
-## Separate read, simulate, sign and submit
+## Separate read, approve, sign, simulate and submit
 
 Use a staged flow:
 
 1. Build a transaction request from explicit user intent.
 2. Add required contract I/O, outputs and resources.
-3. Query costs/consensus data and estimate predicates.
-4. Simulate/dry-run the exact final shape.
-5. Present network, account, recipient, assets, amounts, fees and calls.
-6. Sign only after confirmation.
+3. Query costs/consensus data and estimate predicates on the final shape.
+4. Present network, account, recipient, assets, amounts, fees and calls.
+5. Sign only after confirmation.
+6. Simulate/dry-run the exact signed bytes with UTXO validation.
 7. Submit only with authority, then wait for and inspect the final result.
 
 Staged in fuels-ts (`v0.103.0` APIs; confirm each signature against the
@@ -183,34 +183,58 @@ const request = new ScriptTransactionRequest({
 request.addContractInputAndOutput(contractId);
 request.addCoinOutput(recipient, amount, assetId);
 
-// 3: fund from the sender. Check this helper's exact signature and return
-// shape against the `fuels` version pinned in the project lockfile.
-const funded = await sender.fundWithRequiredCoins(request);
-
-// Predicate estimation only prices predicate inputs; it is a no-op on a
-// request that has none. Use the returned request, not the argument.
-const estimated = await provider.estimatePredicates(funded);
-
-// 4: provider-level dry run of the exact bytes that will be submitted (not
-// the call-builder `.dryRun()`, deprecated per frontend-typescript.md).
-const { receipts } = await provider.dryRun(estimated, {
-  utxoValidation: true,
+// 3: assemble. `assembleTx` replaces the deprecated `getTransactionCost`
+// flow: it funds the fee, adds missing dependencies and estimates
+// predicates on the final shape, so no separate funding or
+// `estimatePredicates` call is needed.
+const { assembledRequest } = await provider.assembleTx({
+  request,
+  feePayerAccount: sender,
+  accountCoinQuantities: [{ assetId, amount, account: sender }],
 });
-// A dry run that "succeeds" can still contain a failing receipt. Match the
-// receipt-type constant against the installed `fuels` typings.
-if (receipts.some((r) => /revert|panic/i.test(String(r.type)))) {
-  throw new Error('simulation reverted; do not sign or submit');
+
+// 4: present network, account, recipient, assets, amounts and fees from the
+// assembled request, and continue only after confirmation.
+
+// 5: sign the approved shape. The signature is written into a witness, so it
+// is part of the bytes the next step validates.
+const signature = await sender.signTransaction(assembledRequest);
+assembledRequest.updateWitnessByOwner(sender.address, signature);
+
+// 6: provider-level dry run of the signed request (not the call-builder
+// `.dryRun()`, deprecated per frontend-typescript.md). This validates the
+// exact signed bytes that will be submitted, in the same order the SDK's own
+// `simulateTransaction` uses: sign, then dry-run with UTXO validation on and
+// dependency estimation off. Estimation stays off here and at submission so
+// the validated and submitted bytes match.
+const { dryRunStatus, receipts } = await provider.dryRun(assembledRequest, {
+  utxoValidation: true,
+  estimateTxDependencies: false,
+});
+// The status discriminant, not a receipt-string heuristic, decides success.
+// Receipts stay available as additional evidence; decode them with the
+// matching ABI.
+if (dryRunStatus?.type !== 'DryRunSuccessStatus') {
+  throw new Error('simulation failed; do not submit');
 }
 
-// 5-6: present network, account, recipient, assets, amounts and fees, then
-// sign only after confirmation.
-const signature = await sender.signTransaction(estimated);
-estimated.updateWitnessByOwner(sender.address, signature);
-
-// 7: submit, then wait for and inspect the final status.
-const response = await provider.sendTransaction(estimated);
+// 7: submit the same request unchanged, then wait for and inspect the final
+// status.
+const response = await provider.sendTransaction(assembledRequest, {
+  estimateTxDependencies: false,
+});
 const { status, id } = await response.waitForResult();
 ```
+
+Predicate data and any witnesses that affect execution must already be in
+place before assembly and estimation, and therefore before the signed dry
+run: `assembleTx` estimates predicates on the shape it is given, and a
+witness added afterwards changes the bytes that were validated. That
+estimation is gas metering, not validity — a predicate that returns
+`false` still estimates successfully, and only the signed dry run or
+submission rejects it. An unsigned preview dry run may be added earlier as
+a UX step, but its guarantees are weaker — it validates bytes that will not
+be submitted — and it cannot replace the final signed dry run.
 
 Do not treat a successful simulation as final inclusion. Check transaction
 status, receipts, block/confirmation policy and application state. Decode logs

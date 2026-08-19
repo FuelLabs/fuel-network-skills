@@ -18,6 +18,17 @@ QUOTED_YAML_VALUE_RE = re.compile(
     r'^\s{2}(?P<key>[a-z_]+):\s+"(?P<value>.*)"\s*$'
 )
 
+PREDICATE_HEADING = "## Transaction-binding predicate"
+PREDICATE_FIXTURE = Path("fixtures") / "transaction-binding-predicate"
+PREDICATE_FIXTURE_FILES = (
+    Path("predicate") / "Forc.toml",
+    Path("predicate") / "Forc.lock",
+    Path("predicate") / "src" / "main.sw",
+    Path("encoding-test") / "Forc.toml",
+    Path("encoding-test") / "Forc.lock",
+    Path("encoding-test") / "src" / "main.sw",
+)
+
 
 class ValidationError(ValueError):
     """Raised when repository validation fails."""
@@ -98,6 +109,47 @@ def validate_evals(path: Path) -> None:
         )
 
 
+def extract_sway_block(markdown: str, heading: str) -> str:
+    lines = markdown.splitlines(keepends=True)
+    section = next(
+        (index for index, line in enumerate(lines) if line.startswith(heading)), None
+    )
+    if section is None:
+        raise ValidationError(f"references/worked-examples.md has no {heading!r} section")
+
+    for index in range(section + 1, len(lines)):
+        if lines[index].startswith("## "):
+            break
+        if lines[index].rstrip("\n") != "```sway":
+            continue
+        for end in range(index + 1, len(lines)):
+            if lines[end].rstrip("\n") == "```":
+                return "".join(lines[index + 1 : end])
+        raise ValidationError(f"the sway block under {heading!r} is never closed")
+
+    raise ValidationError(f"the {heading!r} section has no sway block")
+
+
+def validate_predicate_fixture(root: Path) -> None:
+    fixture = root / PREDICATE_FIXTURE
+    for relative in PREDICATE_FIXTURE_FILES:
+        if not (fixture / relative).is_file():
+            raise ValidationError(
+                f"predicate fixture is missing {(PREDICATE_FIXTURE / relative).as_posix()}"
+            )
+
+    documented = extract_sway_block(
+        (root / "references" / "worked-examples.md").read_text(encoding="utf-8"),
+        PREDICATE_HEADING,
+    )
+    compiled = fixture / "predicate" / "src" / "main.sw"
+    if documented.encode("utf-8") != compiled.read_bytes():
+        raise ValidationError(
+            f"the {PREDICATE_HEADING!r} block in references/worked-examples.md no "
+            f"longer matches {(PREDICATE_FIXTURE / 'predicate' / 'src' / 'main.sw').as_posix()}"
+        )
+
+
 def validate_repository(root: Path) -> None:
     skill_path = root / "SKILL.md"
     skill_markdown = skill_path.read_text(encoding="utf-8")
@@ -131,6 +183,7 @@ def validate_repository(root: Path) -> None:
             f"interface.default_prompt must explicitly mention ${SKILL_NAME}"
         )
 
+    validate_predicate_fixture(root)
     validate_evals(root / "evals" / "evals.json")
 
 
