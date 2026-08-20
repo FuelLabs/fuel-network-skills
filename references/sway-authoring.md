@@ -7,7 +7,7 @@ to write good Sway; for definitions load the companion references:
 [storage.md](storage.md), [stdlib.md](stdlib.md), and
 [fuelvm-assembly.md](fuelvm-assembly.md).
 
-- [Structure programs explicitly](#structure-programs-explicitly)
+- [Design stable ABIs](#design-stable-abis)
 - [Make effects visible](#make-effects-visible)
 - [Respect ownership and data movement](#respect-ownership-and-data-movement)
 - [Write readable optimized Sway](#write-readable-optimized-sway)
@@ -15,22 +15,12 @@ to write good Sway; for definitions load the companion references:
 - [Control experimental features](#control-experimental-features)
 - [Verify authoring changes](#verify-authoring-changes)
 
-## Structure programs explicitly
-
-Start each package with exactly one program declaration:
-
-```sway
-contract;
-// or: script; predicate; library;
-```
-
-Contracts expose ABI implementations. Scripts and predicates enter at
-`fn main`; predicate `main` returns `bool`. Libraries expose reusable modules,
-types, ABIs and functions.
+## Design stable ABIs
 
 Keep public ABIs small and stable. Put shared ABI definitions and data types in
 a library rather than duplicating definitions between contracts and clients.
-Treat ABI changes as cross-language API migrations. Represent meaningful
+Treat ABI changes as cross-language API migrations; adding a `log` or a typed
+`require` changes the ABI's logged types. Represent meaningful
 absence/transitions with `Option` or enums rather than value-plus-boolean,
 fabricated empty records or zero sentinels; branch with `match`/`if let` rather
 than probe then `unwrap`. Give each safety policy one canonical getter and
@@ -81,35 +71,16 @@ compile-time bounds and preallocate `Vec` capacity when known. Use
 `StorageVec` in unbounded state.
 
 Return structured errors or revert conditions that clients and tests can
-decode. Test every authorization, asset-shape, boundary and malformed-input
-failure, not only happy paths.
+decode.
 
 ## Write readable optimized Sway
 
-Default to idiomatic, auditable code that removes real work:
-
-- load immutable storage once per phase and write once;
-- avoid repeated transaction getters and fixed-array indexing;
-- reject malformed/expired shapes before expensive bounded work;
-- keep fixed small arrays instead of heap collections;
-- stream one complete commitment instead of a deep hash tree;
-- construct an aggregate once from locals rather than mutate then return;
-- keep hot loop bodies inline;
-- deduplicate a substantial cold block across entrypoints.
-
-Use measured compact forms only in the matching context:
-
-- try `if let` for a large predicate-data success path;
-- try explicit `match` for `Option<bool>` replay defaults;
-- use enum dispatch and native predicates such as `is_zero()` when clearer;
-- retain `unwrap_or` for scalar defaults unless release measurement favors a
-  match.
-
-Do not introduce locals, helper boundaries, branchy strength reduction,
-partial/full unrolling or asm merely because the source looks lower-level.
-Forc 0.71.2 frequently canonicalized simple source changes and sometimes made
-manual forms worse. Read [performance.md](performance.md) for the measured
-evidence.
+Default to idiomatic, auditable code that removes real work; do not introduce
+locals, helper boundaries, branchy strength reduction, unrolling or `asm`
+merely because the source looks lower-level. Forc 0.71.2 frequently
+canonicalized simple source changes and sometimes made manual forms worse.
+Read [performance.md](performance.md) for the readable-first defaults and the
+measured evidence behind them.
 
 ## Isolate low-level code
 
@@ -117,6 +88,7 @@ Treat `asm`, raw pointers, manual storage-key computation, byte decoding,
 hashing and transmute-like operations as audit boundaries:
 
 - wrap them in small typed functions;
+- keep a readable Sway oracle to diff the low-level form against;
 - document preconditions, layout and valid ranges;
 - test edge lengths, alignment, overflow and malformed bytes;
 - inspect final IR/ASM/bytecode after compiler changes.
@@ -127,47 +99,27 @@ exact pinned compiler.
 
 ### Author raw FuelVM assembly
 
-Read [fuelvm-assembly.md](fuelvm-assembly.md) for the verified register
-model, memory model, opcode set, GTF table, predicate restrictions and Sway
-`asm`-block syntax rules. For behavior on a different pinned release, check
-examples from the exact `FuelLabs/sway` checkout:
+[fuelvm-assembly.md](fuelvm-assembly.md) is the home for the register and
+memory models, opcode set, GTF table, predicate restrictions and Sway
+`asm`-block syntax; [maximum-optimization.md](maximum-optimization.md) holds
+the measured assembly results and is loaded only for an explicit
+maximum-optimization request. Those measurements only credited asm with
+removing fixed-loop or branch scaffolding: straight-line leaf expressions and
+asm placed inside the original Sway loop were gas-neutral or regressed, so
+route a request for an asm rewrite of either shape back to Sway. For behavior
+on a different pinned release, check these paths in the exact `FuelLabs/sway`
+checkout:
 
 - `test/src/e2e_vm_tests/test_programs/should_pass/language/asm_expr_basic/`
 - `test/src/ir_generation/tests/`
 - `sway-lib-std/src/`
 
-Pass values through named input registers, initialize writable registers before
-reading them, and return an explicitly typed register:
-
-```sway
-let value = asm(left: a, right: b, result) {
-    add result left right;
-    result: u64
-};
-```
-
-FuelVM words are 64-bit. Confirm opcode-specific immediate widths, memory
-offset units, reserved registers, pointer provenance, jump targets, arithmetic
-flags, and overflow behavior from pinned source. Keep storage, external calls,
-and transaction decoding in Sway unless their exact low-level semantics and
-bounds are independently covered. Inspect and measure release bytecode; do not
-transfer EVM assembly assumptions to FuelVM.
-
-Assembly research found wins only when removing fixed-loop or branch
-scaffolding; straight-line leaves and asm inside the original loop were 0/0 or
-regressed. Keep a readable Sway oracle and load
-[maximum-optimization.md](maximum-optimization.md) only for an explicit
-maximum-optimization request.
-
-For forc 0.71.2 specifically, wide flat 11/12/13-field hash tuples lacked the
-needed `Hash` implementation in measured attempts, direct `Output`
-hash/comparison forms failed, and expression-position bool-to-u64 `as` failed.
-Use nested tuples/`Hasher`, explicit output discriminants and a typed
-`if`-expression respectively; re-check on another compiler. Also measured
-there: `mut` in a match pattern did not compile (shadow into a mutable local
-inside the arm); adding `log` or a typed `require` changes ABI logged types;
-and smaller integer source types do not shrink FuelVM registers or artifacts
-and can add conversions.
+Keep storage, external calls and transaction decoding in Sway unless their
+exact low-level semantics and bounds are independently covered, and do not
+transfer EVM assembly assumptions to FuelVM: words are 64-bit, so narrower
+source integer types shrink neither registers nor artifacts and can add
+conversions. At forc 0.71.2, direct `Output` hash and comparison forms did not
+compile — use explicit output discriminants.
 
 ## Control experimental features
 
@@ -180,16 +132,7 @@ deployment policy explicitly support it.
 
 ## Verify authoring changes
 
-```sh
-forc fmt --check
-forc check --locked
-forc test --locked
-forc build --release --locked
-forc test --release --locked
-```
-
-Add SDK integration tests for wallets, deployment, transaction I/O,
-multi-contract paths and receipt decoding. Diff release ABI, bytecode, storage
-slots, configurables, roots/IDs and generated bindings. If only `forc-fmt` is
-available as an executable, run its own help; do not assume every plugin
-supports the same `forc <subcommand>` dispatch.
+Run the standard verification ladder from
+[testing-and-debugging.md](testing-and-debugging.md), add SDK integration tests
+for wallets, deployment, transaction I/O, multi-contract paths and receipt
+decoding, and diff the release artifacts with `scripts/diff_fuel_artifacts.py`.

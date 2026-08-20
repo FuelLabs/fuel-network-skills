@@ -46,7 +46,7 @@ distinct sub-assets minted by the contract. An NFT is an SRC-20 asset with
 `total_supply == 1` and `decimals == 0`; there is no separate NFT or
 enumerability standard.
 
-Events (each with a `new(...)` constructor and `.log()` method): 
+Events (each with a `new(...)` constructor and `.log()` method):
 `SetNameEvent { asset, name: Option<String>, sender }`,
 `SetSymbolEvent { asset, symbol: Option<String>, sender }`,
 `SetDecimalsEvent { asset, decimals: u8, sender }`,

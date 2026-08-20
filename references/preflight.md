@@ -58,7 +58,9 @@ request depends on “latest,” a target network, or a deployment.
    | TypeScript SDK | package versions | JS lockfile |
    | Artifacts | hashes/IDs | archived release output/deployment record |
 
-8. Label uncertainty. Matching version numbers are not compatibility evidence.
+8. Label every unresolved cell; a filled matrix is not compatibility evidence
+   on its own ([SKILL.md version
+   rules](../SKILL.md#enforce-these-fuel-specific-rules)).
 
 ## Gate by task
 

@@ -66,7 +66,8 @@ configurables cannot be shadowed or shadow.
   wildcard `_`, tuples, enum constructors, struct patterns with renames and
   `..` rest, and or-patterns `|` (also nested:
   `Point { x: 333 | 444, .. }`). **No match guards, no range patterns, no
-  ref patterns** at this tag.
+  ref patterns** at this tag. A `mut` binder parses but did not compile at
+  `v0.71.2` — bind immutably and shadow into a mutable local inside the arm.
 - Loops: `while cond {}` and `for pat in expr {}`. **There is no `loop`
   keyword.** `for` only iterates values with an `Iterator`-shaped `.iter()`
   (Vec, Bytes, StorageVec); arrays are not directly iterable — index with
@@ -174,7 +175,7 @@ named values referenced bare — see
 | `require` | `#[require(trivially_encodable)]` | types |
 
 Unknown attributes are a **warning**, not an error — a typo like
-`#[namespace(...)]` or `#[tracing(...)]` compiles and silently does nothing.
+`#[tracing(...)]` compiles and silently does nothing.
 
 ## Panic and rich errors
 

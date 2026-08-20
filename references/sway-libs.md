@@ -1,12 +1,18 @@
 # sway-libs implementation libraries
 
+These are external optional packages from `FuelLabs/sway-libs` that you
+`forc add` and that version independently of the compiler; for the built-in
+`std::` library see [stdlib.md](stdlib.md).
+
 Verified against a local `FuelLabs/sway-libs` checkout, commit `4908619`
 (2025-11-20), per-library packages `0.26.1`-`0.27.0` depending on
 `sway-standards 0.8.2`. Its CI pins forc `0.70.2` + fuel-core `0.47.1` — the
 live network toolchain, one minor behind this skill's `v0.71.2` reference
-baseline. Select the library tag whose pinned forc matches the project
-toolchain per [assets-and-standards.md](assets-and-standards.md); these are
-audited-scope implementations, not standards — the interfaces live in
+baseline, and no supported `v0.71.x` compatibility matrix was established at
+the snapshot. Select the library tag whose pinned forc matches the project
+toolchain, compile under that exact toolchain, and review upstream packaging
+changes (per-library packages) before upgrading. These are audited-scope
+implementations, not standards — the interfaces live in
 [src-interfaces.md](src-interfaces.md).
 
 Each library is its own package (`forc add ownership`) imported by package
@@ -58,9 +64,21 @@ For richer ACLs, model actual multi-holder cardinality; a grant-only API or
 last-grantee field is not a role set. Prefer `Identity -> packed roles` when
 identity is the dominant query, use semantic `Role`/`RoleBitmap` ABI types and
 centralize bitmap operations: reject indexes at/above width, grant with OR and
-revoke with AND-NOT without changing other bits. Test bit zero, the highest
-valid bit and the first invalid bit; measure slot/hash cost as membership grows.
-Keep owner-authorized recovery even when owner lacks the ACL-admin role, make
+revoke with AND-NOT without changing other bits.
+
+```sway
+const ROLE_WIDTH: u64 = 64;   // roles defined; a u64 bitmap holds at most 64
+
+fn role_mask(index: u64) -> u64 { require(index < ROLE_WIDTH, index); 1u64 << index }
+fn grant(bits: u64, index: u64) -> u64 { bits | role_mask(index) }
+fn revoke(bits: u64, index: u64) -> u64 { bits & !role_mask(index) }
+fn has_role(bits: u64, index: u64) -> bool { (bits & role_mask(index)) != 0 }
+```
+
+Reassign explicitly — Sway has no `|=`/`&=`/`^=` compound operators
+([sway-language.md](sway-language.md)). Test bit zero, the highest valid bit
+and the first invalid bit; measure slot/hash cost as membership grows. Keep
+owner-authorized recovery even when owner lacks the ACL-admin role, make
 absent revocation harmless and treat ACL-library integration as a privileged
 ABI/storage migration.
 

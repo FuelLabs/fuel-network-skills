@@ -139,8 +139,7 @@ kebab-case. Package `Forc.toml` sections and fields:
   `reverse-results`, `optimization-level`, `backtrace`, `dump`.
 - `[proxy]` — `enabled: bool` and optional `address`. When enabled, a
   compatible `forc deploy` plugin deploys/updates an SRC-14 proxy pointing at
-  the new contract; the manifest only declares intent. Verify behavior with
-  the installed plugin's `--help`.
+  the new contract; the manifest only declares intent.
 - Workspace root manifest: `[workspace]` with `members` and optional
   `metadata`, plus optional `[patch.<source>]`. No `[project]`.
 
@@ -168,23 +167,16 @@ reviewed local/path vendoring strategy when true air-gapping is required.
 
 ## Build and inspect
 
-```sh
-forc fmt --check
-forc check --locked
-forc test --locked
-forc build --release --locked
-forc test --release --locked
-```
+Run the standard verification ladder (see
+[testing-and-debugging.md](testing-and-debugging.md)). Use `forc fmt` without
+`--check` only when formatting mutation is intended. Archive the release
+artifacts that feed bindings or deployment: clean generated output, produce
+them in one build and fail when a production ABI is missing. Treat Rust/npm
+packages, bindings, generated names/exports, deployment records and addresses
+as one compatibility surface; dry-run the exact package deployment consumes.
+Compare artifacts across a change with `scripts/diff_fuel_artifacts.py`.
 
-Use `forc fmt` without `--check` only when formatting mutation is intended.
-Archive the release ABI, bytecode, storage slots, configurables and roots/IDs
-that feed bindings or deployment. Clean generated output, produce them in one
-build and fail when a production ABI is missing. Treat Rust/npm packages,
-bindings, generated names/exports, deployment records and addresses as one
-compatibility surface; dry-run the exact package deployment consumes. Never
-deploy a debug artifact.
-
-For deeper inspection, verify flags on the installed version:
+For deeper inspection:
 
 ```sh
 forc build --release --locked --ir initial final --asm final --bytecode

@@ -1,0 +1,6 @@
+[project]
+authors = ["fixture"]
+entry = "main.sw"
+license = "Apache-2.0"
+name = "predicate_fixture"
+implicit-std = true

@@ -1,2 +1,9 @@
 __pycache__/
 *.py[cod]
+prnotes.md
+pr_insight.md
+
+# Fixture build outputs and harness working state (see fixtures/*/README.md).
+fixtures/**/out/
+fixtures/**/node_modules/
+fixtures/transaction-binding-predicate/harness/work/

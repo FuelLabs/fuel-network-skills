@@ -11,8 +11,7 @@ keep packaging/release observations separate from contract-safety or economic
 claims.
 
 - [Review in invariant order](#review-in-invariant-order)
-- [Audit predicates as complete locks](#audit-predicates-as-complete-locks)
-- [Bind complete transaction intent](#bind-complete-transaction-intent)
+- [Attack every unbound dimension](#attack-every-unbound-dimension)
 - [Treat calls and storage as adversarial](#treat-calls-and-storage-as-adversarial)
 - [Control failure-position and gas griefing](#control-failure-position-and-gas-griefing)
 - [Validate oracle and time inputs](#validate-oracle-and-time-inputs)
@@ -52,48 +51,50 @@ variants/reverts aligned with the ABI, and classify each external method as
 permissionless, owner-only or signature-authorized. Distinguish caller from a
 named authorization subject wherever delegation is possible.
 
-## Audit predicates as complete locks
+## Attack every unbound dimension
 
 A predicate is not a helper; it is the authorization boundary for its UTXO.
-Anyone can submit a transaction that returns true.
+Anyone may submit a transaction that satisfies it, so submission identity is
+never authorization: every dimension left unbound is a dimension the attacker
+chooses. Apply the same audit to signatures, replay keys and cross-package
+commitments, where an unbound dimension is one the signer never agreed to.
 
-Review and adversarially permute:
+The dimensions below are where that choice is made, so permute each one
+adversarially and name the attack it enables:
 
-- exact controlled input(s), index assumptions and asset/amount;
-- all required outputs, recipient, amount bounds, change and duplicates;
-- whether one qualifying output could be reused by multiple predicate inputs;
-- beneficiary net asset gain when the beneficiary can also supply inputs;
-- extra inputs/outputs that may move unrelated value;
-- script bytecode/hash and permitted contract set where relevant;
-- predicate-data encoding, version and domain;
-- witness indices, signature intent, chain/application scope, nonce and expiry;
-- maturity/expiration policy;
-- false-on-malformed behavior;
-- per-input predicate gas after final transaction ordering.
+- chain ID, application/protocol and message subdomain — cross-chain and
+  cross-application replay;
+- transaction type, permitted script bytecode/hash, permitted contract set,
+  target contract and method — substituting a script or callee that moves
+  value differently;
+- policy/schema version, authority epoch, nonce/UTXO rollover and transaction
+  ID — replay under a revoked policy or of the same intent;
+- exact controlled input(s), index assumptions, input/output type
+  discriminants, exact counts, ordering and uniqueness — reordering, padding
+  or substituting the input the predicate believed it was checking;
+- owner, recipient, asset, amount bounds, change and duplicate outputs;
+- beneficiary net asset gain when the beneficiary can also supply inputs — a
+  gross output that merely returns the beneficiary's own input or change;
+- reuse of one qualifying output across multiple predicate inputs — one
+  payment unlocking several UTXOs;
+- extra inputs/outputs beyond the bound set — unrelated value moved in the
+  same transaction;
+- predicate-data encoding, version and domain — the same bytes reinterpreted
+  under another schema;
+- witness index, payload length and authenticated content/commitment — a
+  signature replayed against a different index or payload;
+- maturity/expiration policy and validity window;
+- false-on-malformed behavior and per-input predicate gas after final
+  transaction ordering.
 
 When batching predicate inputs is allowed, scale consideration across the
 controlled inputs or bind each input to distinct consideration. Otherwise
-require exactly one controlled predicate input. Do not treat a gross output as
-payment if it may simply return the beneficiary's own input or change.
+require exactly one controlled predicate input.
 
-Reject predicate designs that require mutable contract state, an oracle, a
-wall clock, block height/hash reads, or contract calls. Route those rules to a
-contract, optionally with a script for atomic orchestration.
-
-## Bind complete transaction intent
-
-For every signature, predicate, replay key and cross-package commitment,
-decide explicitly whether to bind:
-
-- Fuel chain ID, application/protocol and message subdomain;
-- transaction type and permitted script bytecode;
-- target contract and method;
-- policy/schema version and authority epoch;
-- nonce/UTXO rollover and transaction ID where instance binding is required;
-- input/output type, exact controlled counts, ordering and uniqueness;
-- owner, recipient, asset, amount and beneficiary net gain;
-- witness index, payload length and authenticated content/commitment;
-- expiration and validity window.
+Predicate capability limits are a design question, not a review-time list:
+[program-architecture.md](program-architecture.md) states which rules must
+move to a contract, and [fuelvm-assembly.md](fuelvm-assembly.md) is the
+authoritative predicate-legal opcode list.
 
 Do not infer authorization from witness volume or bitmap population. Reject
 bits outside configured signer positions, require signer uniqueness and bind
@@ -101,13 +102,11 @@ each signer/witness to policy membership.
 
 Normalize field order, declared width, discriminants, tags, tuple/stream
 encoding and defaults across registry, auditor, predicate, script, contract and
-SDK copies. A research fixture found an auditor/predicate witness-index width
-discrepancy; normalization removed a possible root mismatch and reduced cost.
-
-Hash output variants through an explicit discriminant. Do not rely on
-zero/default getters that collapse variants. Bind recipient net gain rather
-than gross output when the beneficiary can also provide matching inputs, and
-prevent one output from satisfying multiple controlled inputs.
+SDK copies; a research fixture's auditor/predicate witness-index width
+mismatch was simultaneously a cost and a root-discrepancy defect (measurements
+in [transactions-and-wallets.md](transactions-and-wallets.md)). Hash output
+variants through an explicit discriminant and do not rely on zero/default
+getters that collapse variants.
 
 A hash tested only for `!= b256::zero()` is not authentication. Compare it
 with an authenticated expectation or use it in a replay/authorization
@@ -167,9 +166,9 @@ receipts and storage growth. Compare:
 - repeated rejected request IDs and refund/retry behavior.
 
 Place a cheap, independent reject before hashes, witness scans, storage reads
-or bounded kernels when the accepted transaction set is identical. Entrypoint
-research saved about 1,250 gas on malformed transaction-shape gates and
-3,832-3,960 gas on expired oracle lanes by avoiding bounded work. Do not
+or bounded kernels when the accepted transaction set is identical; entrypoint
+research measured real savings on both malformed transaction-shape gates and
+expired oracle lanes (figures in [performance.md](performance.md)). Do not
 give failed requests a more favorable refund/retry policy than successful
 ones unless that asymmetry is intentional.
 
@@ -195,18 +194,30 @@ wide-confidence-interval and differently scaled values.
 For invalidatable external state, co-locate fields updated together but keep
 the replay watermark separate. Invalidation clears the live value and raises
 the watermark to `max(previous_watermark, block_time)`; recovery must be newer,
-including within the same second. Separate write/read freshness and expose one
+including within the same second:
+
+```sway
+storage {
+    // fields invalidated together, so one write keeps them consistent
+    feed: Option<Observation> = None, // value plus its publish time
+    // outlives invalidation; never fold this into `feed`
+    invalidated_at: u64 = 0,          // max(previous_watermark, block_time)
+}
+```
+
+A recovery write of `feed` is accepted only when its publish time is strictly
+greater than `invalidated_at`. Separate write/read freshness and expose one
 getter with one stale/missing policy. Keep tolerance/range math in the widest
 type until comparison; document units, scales and time format, and define how
 configuration changes affect live state.
 
 ## Review lifecycle and operations
 
-Require one-time initialization guards, least privilege, two-step/delayed
-high-impact transfers, old-message/state migration tests and rollback or
-containment. A permissionless or re-callable initializer is an ownership
-takeover path. Check configurables, salt, implementation IDs and authority
-changes because they can change bytecode identity or strand old operations.
+Require one-time initialization guards, least privilege, old-message/state
+migration tests and rollback or containment. A permissionless or re-callable
+initializer is an ownership takeover path. Check configurables, salt,
+implementation IDs and authority changes because they can change bytecode
+identity or strand old operations.
 
 Specify pause behavior as an explicit operation matrix stating which
 operations remain available in each pause state. Preserve repayment,
@@ -325,9 +336,8 @@ proof of safety.
 - Delisting or removing an asset in a way that freezes user withdrawals.
 - Refund state recorded around a fallible call so that failure strands funds.
 - Escrow/refund logic assuming a script revert un-spends inputs or suppresses
-  fixed `Coin` outputs — a reverted transaction is still included, spends its
-  inputs, creates declared `Coin` outputs and pays fees; only contract
-  state/balances and `Variable` outputs roll back.
+  fixed `Coin` outputs (revert semantics in
+  [transactions-and-wallets.md](transactions-and-wallets.md)).
 - Signature missing chain/domain/nonce/call scope.
 - Nightly/deprecated opcode, storage intrinsic or encoding copied into release
   code.
@@ -337,9 +347,18 @@ proof of safety.
 
 For each finding include severity, confidence, file/line, version/artifact
 scope, violated invariant or affected asset, prerequisites, concrete
-exploit/failure transaction, impact, minimal fix and regression test. Separate
-confirmed defects from hardening and unresolved compatibility questions.
-Require adversarial human review for authorization, nonce, storage-layout and
-resource/accounting-limit changes; compilation and automation are insufficient. Use the
-repository's private disclosure process for plausible undisclosed
-vulnerabilities.
+exploit/failure transaction, impact, minimal fix and regression test:
+
+> **High, confirmed — `escrow/src/main.sw:142`, commit `a1b2c3d`, forc
+> `0.71.2`.** Invariant: only the committed recipient may receive escrowed
+> value. The predicate checks `output_amount(i)` and `output_asset_id(i)` but
+> never `output_asset_to(i)`, so any submitter can point the qualifying `Coin`
+> output at their own address and spend the UTXO. Fix: compare
+> `output_asset_to(i)` with the recipient in the predicate data; regression
+> test `claim_rejects_redirected_output`.
+
+Separate confirmed defects from hardening and unresolved compatibility
+questions. Require adversarial human review for authorization, nonce,
+storage-layout and resource/accounting-limit changes; compilation and
+automation are insufficient. Use the repository's private disclosure process
+for plausible undisclosed vulnerabilities.

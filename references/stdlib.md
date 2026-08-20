@@ -1,5 +1,9 @@
 # Sway standard library
 
+This is the compiler's built-in standard library (`sway-lib-std`), implicitly
+available in every program; for the external optional sway-libs packages —
+ownership, pausable, proxy, asset base — see [sway-libs.md](sway-libs.md).
+
 Verified against `sway-lib-std/src` at Sway `v0.71.2` (commit `aa2e3b1`).
 Signatures below are the new-encoding variants, which are in effect on
 `v0.71.x`. Re-verify against the project's pinned tag before use; several
@@ -113,6 +117,7 @@ pub fn tx_script_data<T>() -> Option<T>      // unchecked type assumption
 pub fn tx_script_bytecode_hash() -> Option<b256>
 pub fn tx_witnesses_count() -> u64
 pub fn tx_witness_data<T>(index: u64) -> Option<T>
+pub fn tx_witness_data_length(index: u64) -> Option<u64>
 
 pub fn input_count() -> u16
 pub fn input_type(index: u64) -> Option<Input>       // Input::{Coin,Contract,Message}
@@ -120,6 +125,7 @@ pub fn input_amount(index: u64) -> Option<u64>
 pub fn input_coin_owner(index: u64) -> Option<Address>
 pub fn input_asset_id(index: u64) -> Option<AssetId>
 pub fn input_predicate_data<T>(index: u64) -> Option<T> where T: AbiDecode
+pub fn input_predicate_data_length(index: u64) -> Option<u64>
 pub fn input_message_sender/recipient(index: u64) -> Option<Address>
 pub fn input_message_data(index: u64, offset: u64) -> Option<Bytes>
 pub fn input_address(index: u64) -> Option<Address>  // coin owner or message sender
@@ -132,7 +138,14 @@ pub fn output_asset_to(index: u64) -> Option<Address>
 ```
 
 Treat `None` as a distinct, testable case (wrong index, wrong variant, or
-unset policy), not an error to unwrap through.
+unset policy), not an error to unwrap through. The `<T>` getters do not
+validate size: `input_predicate_data<T>` decodes any `Coin` or `Message`
+input's data as `T` with no length check, and `tx_witness_data<T>` never
+checks the actual payload length either — for a reference type it copies
+the length `GTF` reports, and for a value type it reads a `T` straight out
+of the witness pointer. Gate them with the matching `*_length` getter —
+exactly the encoded size of `T` — before typed access to attacker-supplied
+data.
 
 ## Hash and verify (std::hash, std::crypto)
 
@@ -151,15 +164,25 @@ Wide flat tuples beyond that lack `Hash` — nest or stream via `Hasher`.
 deprecated at this tag. Use `std::crypto`:
 
 ```sway
+pub enum Signature { Secp256k1: Secp256k1, Secp256r1: Secp256r1, Ed25519: Ed25519 }
+impl From<b256> for Message                          // std::crypto::message
+impl From<Bytes> for Message
+impl From<B512> for Secp256k1                        // also (b256, b256), [u8; 64]
+pub fn recover(self, message: Message) -> Result<PublicKey, SignatureError>
+pub fn address(self, message: Message) -> Result<Address, SignatureError>
+pub fn verify(self, public_key: PublicKey, message: Message) -> Result<(), SignatureError>
+pub fn evm_address(self, message: Message) -> Result<EvmAddress, SignatureError>
+
 let sig = Signature::Secp256k1(Secp256k1::from(b512));
-sig.recover(message) -> Result<PublicKey, SignatureError>
-sig.address(message) -> Result<Address, SignatureError>
-sig.verify(public_key, message) -> Result<(), SignatureError>
-sig.evm_address(message) / verify_evm_address(...)
+sig.address(Message::from(digest))            // -> Result<Address, _>
 ```
 
-with `Message`, `PublicKey`, `Secp256k1`, `Secp256r1`, `Ed25519`, and
-alt-bn128 curve ops (`alt_bn128_add/mul/pairing_check`).
+Those methods are on `Signature` and on `Secp256k1`/`Secp256r1`, alongside
+`verify_address` and `verify_evm_address`; `Ed25519` has `verify` only, and
+recovery through the enum is not applicable to it. Module paths are
+`std::crypto::{message::Message, secp256k1::Secp256k1,
+signature::Signature}`. Also available: `PublicKey` and alt-bn128 curve ops
+(`alt_bn128_add/mul/pairing_check`).
 
 ## Fail loudly (std::revert, std::assert, std::error_signals)
 

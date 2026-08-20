@@ -81,8 +81,28 @@ For compound structures, co-locate values sharing lifecycle/update boundaries.
 Mutate mirrored indexes atomically; reject duplicate external IDs and missing
 indexes rather than let defaults hide partial writes. Encode linkage once in a
 typed variant such as `Parent(id)`, validate IDs before storage access and
-never map decode failure to absence. Use named composite keys/discriminants and
-prove exact width/slot compatibility before upgrading.
+never map an absent or invalid slot read to a live default. Use named composite
+keys/discriminants and prove exact width/slot compatibility before upgrading.
+
+```sway
+enum Link {          // linkage lives in one typed variant, not two fields
+    Root: (),
+    Parent: u64,
+}
+// declared as: link: StorageMap<u64, Link> = StorageMap {},
+
+// Good: absence is its own handled case, distinct from any stored value.
+match storage.link.get(id).try_read() {
+    Some(Link::Parent(parent)) => attach_to(parent),
+    Some(Link::Root) => detach(),
+    None => panic "unknown node",
+}
+
+// Bad: an uninitialized entry (try_read returns None when the slot read is
+// not valid) silently becomes a root, so partial writes are indistinguishable
+// from "this node has no parent".
+let link = storage.link.get(id).try_read().unwrap_or(Link::Root);
+```
 
 `StorageVec<V>`: `push`, `pop() -> Option<V>`,
 `get(i) -> Option<StorageKey<V>>`, `set`, `insert`, `remove(i) -> V`
@@ -119,6 +139,23 @@ All slots are sha256 of domain-separated preimages:
 | Vec content | `sha256(field_id) + word offset`; element id `sha256((index, sha256(field_id)))` |
 | String/Bytes | length at `field_id`, content from `sha256(field_id)` |
 
+The preimage is the literal domain byte followed by the ASCII field path —
+no length prefix, no separator, no trailing NUL. For the counter example in
+[worked-examples.md](worked-examples.md) the 16 preimage bytes
+(1 domain byte + 15 ASCII bytes) are
+`00 73 74 6f 72 61 67 65 2e 63 6f 75 6e 74 65 72` (`0x00` ++
+`"storage.counter"`), so the slot key is
+
+```text
+sha256(0073746f726167652e636f756e746572)
+  = 0xcbf93a9497b1d9a9fa1e5a4c96595c511ddd6d9aef9c1e485177a4834998f371
+```
+
+Moving that field into `ns1 { counter: u64 = 0 }` hashes
+`0x00 ++ "storage::ns1.counter"` instead and lands on
+`0x1b5be86473f7caad7d456ae4822f8b2a0cd1f80473cc5afecf486a0385012cf4` — a
+different live slot, which is why re-namespacing is a state migration.
+
 Values are left-aligned at byte 0 of each 32-byte slot (a `u64` occupies
 bytes 0-8) — the opposite of EVM right-alignment. A field spans
 `ceil(size/32)` consecutive slots; distinct top-level fields never share a
@@ -142,9 +179,8 @@ Security consequences:
 Initializers const-evaluate at compile time into
 `out/<profile>/<package>-storage_slots.json`, which feeds the contract's
 initial state root and therefore the contract ID. Zero-sized storage types
-emit no slots. Diff this artifact on every change
-(`scripts/diff_fuel_artifacts.py` covers it); reordering, renaming or
-re-namespacing fields moves live state.
+emit no slots. Reordering, renaming or re-namespacing fields moves live
+state — diff the artifact with `scripts/diff_fuel_artifacts.py`.
 
 Raw access (`std::storage::storage_api::{read_quads, write_quads}` and the
 `__state_load_word`/`__state_store_word` intrinsics with self-chosen `b256`

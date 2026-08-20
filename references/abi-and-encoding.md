@@ -37,6 +37,42 @@ Top-level keys (camelCase): `programType`
 - `errorCodes`: map u64 → `{ pos {function,pkg,file,line,column}, logId?,
   msg? }` for `panic` call sites.
 
+Excerpt for a counter-style contract exposing
+`increment_counter(amount: u64) -> u64` and logging a `bool` — the ids are
+the real digests, so they can be recomputed to check the linkage:
+
+```json
+{
+  "programType": "contract",
+  "specVersion": "1.2",
+  "encodingVersion": "1",
+  "concreteTypes": [
+    { "type": "u64",
+      "concreteTypeId": "1506e6f44c1d6291cdf46395a8e573276a4fa79e8ace3fc891e092ef32d1b0a0" },
+    { "type": "bool",
+      "concreteTypeId": "b760f44fa5965c2474a3b471467a22c43185152129295af588b022ae50b50903" }
+  ],
+  "functions": [
+    { "name": "increment_counter",
+      "inputs": [ { "name": "amount",
+        "concreteTypeId": "1506e6f44c1d6291cdf46395a8e573276a4fa79e8ace3fc891e092ef32d1b0a0" } ],
+      "output": "1506e6f44c1d6291cdf46395a8e573276a4fa79e8ace3fc891e092ef32d1b0a0",
+      "attributes": [ { "name": "storage", "arguments": ["read", "write"] } ] }
+  ],
+  "loggedTypes": [
+    { "logId": "13213829929622723620",
+      "concreteTypeId": "b760f44fa5965c2474a3b471467a22c43185152129295af588b022ae50b50903" }
+  ]
+}
+```
+
+Nothing is resolved by position: `functions[].inputs[].concreteTypeId` and
+`output` are lookups into `concreteTypes`, and `loggedTypes[].logId`
+`13213829929622723620` is the first 8 big-endian bytes of
+`sha256("bool")` = `b760f44f...` read as a u64, which is also the value
+LOG/LOGD carries in `$rB`. Generic types add the `metadataTypes` hop;
+concrete rows then link back by `metadataTypeId` + `typeArguments`.
+
 Type-string hash preimages: primitives literal (`u64`, `b256`, ...);
 `str`; `str[N]`; arrays `[{T}; N]`; tuples `({T1}, {T2})` (unit `()`);
 `struct path::Name<{T}>` / `enum path::Name<{T}>`; generics `generic T` at
@@ -81,6 +117,30 @@ selector**:
   that input's predicate data.
 - The 4-byte sha256 selector scheme (`fn-selector-encoding.md`) applies
   only to `encodingVersion: "0"` artifacts.
+
+Worked bytes for `increment_counter(42)` on the contract above, plus the
+two-field tuple `(42u64, true)` to show plain concatenation:
+
+```text
+(42u64, true)                 tuple = field encodings concatenated
+  42u64   00 00 00 00 00 00 00 2a     u64: 8 bytes big-endian
+  true    01                          bool: 1 byte, only 0x00/0x01 decode
+  =       0x000000000000002a01        9 bytes: no padding, no alignment,
+                                      no field count, no offsets
+
+param1 -> "increment_counter" as `str`
+  length  00 00 00 00 00 00 00 11     u64 BE length = 17
+  bytes   69 6e 63 72 65 6d 65 6e 74 5f 63 6f 75 6e 74 65 72
+  =       0x0000000000000011696e6372656d656e745f636f756e746572   (25 bytes)
+
+param2 -> argument tuple (42u64,)
+  =       0x000000000000002a          8 bytes; a 1-tuple adds nothing
+```
+
+Contrast with EVM ABI: no 32-byte word padding, no head/tail offset
+section, no 4-byte selector — a `u8` argument is one byte and `str[4]` is
+four. Only `str`/`raw_slice`/`Vec`/`Bytes`/`String` carry a u64 BE length,
+and only enums carry a u64 BE discriminant.
 
 ## Hash-derived identifiers
 
@@ -142,7 +202,7 @@ signed/predicate/data variants are API refinements):
   equal `recipient`. Messages with data are retryable and cannot pay fees.
 
 Outputs: Coin=0, Contract=1, Change=2 (one per asset; amount computed at
-execution), Variable=3 (fully zeroed until runtime `TRO`), 
+execution), Variable=3 (fully zeroed until runtime `TRO`),
 ContractCreated=4.
 
 Policies — bitmask then set values in ascending bit order: Tip=1,

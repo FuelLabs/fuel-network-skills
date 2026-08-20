@@ -49,7 +49,8 @@ export default createConfig({
 ```
 
 Check the installed CLI's config schema; options change. Treat `privateKey` and
-deployment hooks as privileged server/build inputs, never browser configuration.
+deployment hooks as privileged server/build inputs, never browser configuration:
+never bundle private keys, mnemonics or deployment keys into the client bundle.
 If generated bindings are committed, fail CI on unexpected diffs. Ensure the
 ABI and deployed bytecode/contract ID come from the same release build.
 
@@ -94,8 +95,9 @@ wallet; do not assume it is appropriate outside local development.
 - Use `.get()` for read-only execution where supported, `.simulate()` for a
   transaction-like preview, and `.call()` only for intended submission. At
   `v0.103.0`, `.dryRun()` and `getTransactionCost()` are deprecated (prefer
-  `.get()` and `fundWithRequiredCoins`), and `addSigners` is deprecated in
-  favor of explicitly added witnesses.
+  `.get()`, and `fundWithRequiredCoins` on an invocation scope — for a raw
+  transaction request the pinned replacement is `provider.assembleTx`), and
+  `addSigners` is deprecated in favor of explicitly added witnesses.
 - Await `waitForResult()` and inspect status, value, receipts, gas and
   transaction ID; do not treat transaction creation as confirmation.
 
@@ -107,12 +109,9 @@ deliberately.
 
 ## Build safe UX
 
-Before wallet approval, show network, account, contract, method, assets,
-amounts, recipient, estimated fee and important policies in user terms. Disable
-duplicate submission while pending and make retry/idempotency behavior clear.
-Differentiate rejection, simulation revert, submission failure and final
-failure. Never expose private keys, mnemonics or server deployment keys to the
-client bundle.
+Differentiate connector rejection, simulation revert, submission failure and
+final on-chain failure; they are four distinct states, and only
+`waitForResult()` settles the last one.
 
 Test with `launchTestNode` from `fuels/test-utils` for deterministic local
 integration, then run a separate smoke test against the target network. Cover

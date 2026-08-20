@@ -24,8 +24,7 @@ Use sources in this order:
 7. Default branches, issue proposals, nightly specs and old example projects
    only as forward-looking or historical evidence.
 
-Use `scripts/resolve_fuel_versions.py` for live channel/release facts. Use
-`<command> --help` for flags on the installed binary.
+Use `scripts/resolve_fuel_versions.py` for live channel/release facts.
 
 Version-pinned Sway documentation is published per tag at
 `https://fuellabs.github.io/sway/<tag>/book/` (for example `v0.71.2`); the
@@ -36,47 +35,31 @@ name the tag explicitly.
 
 At the snapshot:
 
-- Fuelup `latest` aliased `mainnet`.
 - Live mainnet and testnet both distributed core Forc `0.70.2` and Fuel Core
   `0.47.1`.
 - The newest upstream Sway release was `v0.71.2`.
 - Client/node/crypto/wallet Forc plugins had independent releases.
 
 These facts illustrate the split; rerun the resolver before repeating them as
-current. Never infer SDK, node or plugin compatibility by equal-looking
-versions. Name advice as project-pinned, network-distributed,
-upstream-release, nightly/experimental or historical.
+current. Name advice as project-pinned, network-distributed, upstream-release,
+nightly/experimental or historical.
 
 ## Known misleading public freshness claims
 
-The following public-facing surfaces were rechecked on 2026-07-23. Revalidate
-before filing an update because maintainers may have fixed them.
+These surfaces were rechecked on 2026-07-23 and are dated evidence, not a
+standing map; revalidate a row before relying on it.
 
 | ID | Surface | Freshness contradiction | Priority |
 |---|---|---|---|
-| DOC-001 | `docs.fuel.network/guides/installation/` | Stable guide mapped `latest` to testnet, while current Fuelup mapped it to mainnet | Critical |
-| DOC-002 | `install.fuel.network/master/basics.html` | Current manual described one release channel and nightly as unfinished, contradicting its own channel page | High |
-| DOC-003 | `install.fuel.network/master/overrides.html` | Reproducible export example named a dated `latest` channel that did not exist | Critical |
-| DOC-004 | `docs.fuel.network/docs/sway/` | “Stable” published Sway `0.69.0`, behind both the network compiler and upstream release | High |
-| DOC-005 | `docs.fuel.network/docs/forc/` | “Stable” command reference published Forc `0.69.0` and obscured independent plugin cadence | High |
+| DOC-001 | `docs.fuel.network/guides/installation/` | Stable guide mapped `latest` to testnet while current Fuelup mapped it to mainnet | Critical |
+| DOC-002 | `install.fuel.network/master/basics.html` | Channel/nightly description contradicted its own channel page | High |
+| DOC-003 | `install.fuel.network/master/overrides.html` | Reproducible-export example named a dated `latest` channel that did not exist | Critical |
+| DOC-004 | `docs.fuel.network/docs/sway/` | “Stable” published Sway `0.69.0`, behind both the network compiler and the upstream release | High |
+| DOC-005 | `docs.fuel.network/docs/forc/` | “Stable” published Forc `0.69.0`; obscured plugin cadence | High |
 | DOC-006 | `docs.fuel.network/docs/migrations-and-disclosures/` | Promised latest-version help but Sway coverage stopped before current releases | Critical |
-| DOC-007 | `github.com/FuelLabs/sway-applications` | Claimed low-maintenance apps were updated to latest while they used 2024 nightlies | High |
-| DOC-008 | Sway `v0.71.2` cargo-generate Rust test templates (`templates/`) | Contract template used fuels `0.76.0`; script/predicate templates used `0.70.0` without explaining skew (these are cargo-generate templates, not `forc new` output) | Medium |
-| DOC-009 | `docs.fuel.network/docs/fuels-ts/` | Docs generated from fuels `v0.101.3` with Fuel Core `0.43.1` and Forc `0.68.7`, behind both the `v0.103.0` SDK release and the `0.47.1` network node (rechecked 2026-07-23) | High |
-
-For remediation:
-
-- Correct installation/channel semantics first.
-- Make exported toolchains restore in a clean environment or narrow the
-  reproducibility claim.
-- Generate CLI pages from exact binaries and display the component repository
-  and version.
-- Show docs source version, current network channel and current upstream
-  release as separate badges.
-- Put an archive banner and explicit coverage range on stale migrations and
-  examples.
-- Test every generated program-type template against a published compatibility
-  matrix.
+| DOC-007 | `github.com/FuelLabs/sway-applications` | “Updated to latest” apps used 2024 nightlies | High |
+| DOC-008 | Sway `v0.71.2` cargo-generate Rust test templates (not `forc new` output) | Contract template used fuels `0.76.0`, script/predicate `0.70.0` | Medium |
+| DOC-009 | `docs.fuel.network/docs/fuels-ts/` | Generated from fuels `v0.101.3`, Fuel Core `0.43.1`, Forc `0.68.7` — behind both the `v0.103.0` SDK release and the `0.47.1` network node | High |
 
 Do not label old versioned releases, audit PDFs, pinned legacy projects or
 archives as stale merely because they are old. The defect is an unqualified

@@ -25,7 +25,8 @@ and configuration back to the approved record.
 
 1. Resolve the target named network and query the actual node.
 2. Build and test with exact pins and `--release --locked`.
-3. Diff against the reviewed artifact set.
+3. Diff against the reviewed artifact set with
+   `scripts/diff_fuel_artifacts.py`.
 4. Construct the exact deployment/call/script transaction.
 5. Estimate costs/predicates and dry-run against the target.
 6. Review account, network, IDs, assets, fees, contracts and policies.
@@ -107,9 +108,6 @@ cursors and verify pagination completeness in indexers.
   limits.
 - Separate local ephemeral, testnet and mainnet credentials/configuration.
 - Test release-specific gossip, relayer, GraphQL and shutdown/restart behavior.
-- Back up and restore persistent state according to the node version.
-- Monitor peer/sync health, transaction acceptance/finality, RPC errors,
-  storage and resource usage.
 
 Fuel Core minor changes can alter transport, aggregation, gas/receipt, relayer
 and operational behavior. A compiler-compatible library version is not an
@@ -120,19 +118,21 @@ operator rollout plan.
 Treat pause/unpause, ownership, blacklist/allowlist, fee, oracle, issuer,
 relayer and implementation changes as high-impact transactions:
 
-- enforce least privilege and separation of duties;
-- use two-step/delayed transfer where practical;
 - dry-run and independently verify the final transaction;
 - record typed intent, chain, contract and before/after configuration;
 - monitor the resulting event/state;
+- rehearse reorg/finality-delay and unavailable-signer scenarios;
+- monitor balance, supply, stuck-message and authority anomalies;
 - maintain rollback, containment and communication runbooks.
 
 Domain-separate deterministic salts by network, deployment kind and logical
 instance. Propagate every protocol-affecting configurable through schemas,
 builders, generated types, fixtures, readback and events without a silent Sway
 default. Share one deployment/upgrade builder; define whether values persist,
-reinitialize or needan admin write. Transfer proxy and implementation ownership separately onlyafter configuration. Replace maintainers in revoke/grant/transfer order; make
-retries and duplicate grants safe and leave a recovery-capable maintainer.
+reinitialize or need an admin write. Transfer proxy and implementation
+ownership separately only after configuration. Replace maintainers in
+revoke/grant/transfer order; make retries and duplicate grants safe and leave
+a recovery-capable maintainer.
 
 For upgrades, preserve old-message/state liveness, storage layout and
 outstanding operations. Immutability removes governance risk but does not
@@ -146,12 +146,11 @@ Production correctness includes:
 - idempotent indexer/relayer state and inclusive pagination;
 - every-event verification rather than first-event shortcuts;
 - integer amounts and canonical encodings;
-- live chain/config refresh;
+- live chain-ID/consensus-parameter refresh;
 - concurrency-safe UTXO reservation/retry;
-- secrets management and audit logging;
-- monitoring for balance, supply, stuck-message and authority anomalies.
+- message and relayer status fields (`messageStatus`,
+  `relayedTransactionStatus`) rather than inferred delivery.
 
-Rehearse failure: RPC divergence, partial indexing, restart during submission,
-expired transaction, UTXO conflict, reorg/finality delay, unavailable signer,
-bad configuration and contract pause. Ensure retries cannot duplicate
-economically meaningful actions.
+Cover the Fuel-shaped failure modes: expired transaction, UTXO conflict,
+partial indexing, restart during submission and contract pause. Ensure retries
+cannot duplicate economically meaningful actions.

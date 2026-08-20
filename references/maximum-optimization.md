@@ -146,46 +146,29 @@ operands; operand extraction was not a hidden win.
 
 ## Preserve assembly semantics
 
-Bind Sway inputs explicitly:
+[fuelvm-assembly.md](fuelvm-assembly.md) is authoritative for asm-block
+binding syntax, the accepted opcode subset, reserved registers, the
+immediate-width classes (`imm06`/`imm12`/`imm18`/`imm24`) with the compile-time
+errors they raise, and trap/shift semantics; read it before writing a kernel.
+It does not tabulate the immediate width of every opcode. The
+optimization-specific obligations on top of it:
 
-```sway
-let value = asm(left_reg: left, right_reg: right, result) {
-    add result left_reg right_reg;
-    result: u64
-};
-```
-
-A bare name in the operand list declares a new uninitialized register and
-fails when read.
-
-Follow these rules:
-
-- initialize every writable register before reading it;
-- return one explicitly typed register;
-- do not expect labels, jumps or runtime-loop control inside the bounded asm
-  expression form used by these experiments;
-- do not write `$zero`, `$one`, `$flag`, `$sp`, `$hp`, `$pc`, or other
-  reserved registers;
 - keep runtime loops and external/storage/transaction operations in Sway;
-- preserve exact evaluation order and intermediate overflow traps;
+- preserve exact evaluation order and intermediate overflow traps — a kernel
+  that switches checked arithmetic to wrapping flag semantics is not
+  equivalent, and shift/modulo guards remain part of the reference contract
+  even where the instruction itself is total;
+- hold constants wider than the instruction's immediate in a scratch register
+  rather than reshaping the arithmetic to fit an immediate — at `fuel-vm`
+  `v0.66.4`, `MULI`, `ADDI`, `ANDI`, `XORI` and `DIVI` used 12-bit immediates
+  and `MOVI` accepted a wider 18-bit immediate, so any larger constant needed
+  a scratch register;
 - leave divisor/shift bounds in Sway where practical;
 - prove no undeclared memory/storage/transaction effects;
 - compare the asm result with an independent Sway oracle over boundary inputs.
 
-For the measured release:
-
-- `MULI`, `ADDI`, `ANDI`, `XORI`, and `DIVI` used 12-bit immediates;
-- `MOVI` accepted a wider 18-bit immediate;
-- larger constants required a scratch register;
-- checked `ADD`, `MUL`, and `SUB` trapped on overflow by default;
-- changing flags to wrapping semantics changed behavior;
-- `SLL`/`SRL` with a shift at or above 64 yielded zero in the measured
-  semantics rather than reproducing an external `shift < 64` assertion;
-- `MOD` retained its zero-divisor trap;
-- shift and modulo guards therefore remained part of the reference contract.
-
-Resolve these details from the pinned FuelVM/Sway source before applying them
-to another version.
+Re-derive the per-opcode immediate widths and trap behavior from the pinned
+FuelVM/Sway source before applying them to another version.
 
 ## Exploit compiler-sensitive size forms carefully
 
@@ -236,8 +219,7 @@ Before changing encoding:
 - verify known vectors across contract, predicate, script, SDK, and relayer;
 - reject any change that only passes because the oracle checks nonzero.
 
-Flat wide tuples may not implement `Hash`; 11/12/13-field attempts failed on
-0.71.2. Use nesting or streaming.
+Wide flat tuples lack `Hash`, so nest or stream (see [stdlib.md](stdlib.md)).
 
 Do not introduce extra nested hashes merely to label subdomains. Four explicit
 subdomain tags in an existing five-hash tree cost 2,597 gas/848 B. Prefer

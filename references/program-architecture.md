@@ -34,27 +34,25 @@ Ask in order:
 
 ## Use predicates only for complete transaction-local authorization
 
-A predicate root owns its UTXO. Anyone may submit a transaction that satisfies
-the predicate, so the predicate must bind every economically relevant detail:
-
-- exact input or input class;
-- asset IDs and amounts;
-- required recipients and change policy;
-- output minima/exactness, ordering assumptions and duplicate handling;
-- whether payment is a true net gain and whether one output can authorize more
-  than one predicate input;
-- predicate-data domain/version, signatures, nonces and expiry policy;
-- permitted script, contract set and transaction shape.
-
-A predicate cannot read/write contract storage or call a contract, and it
-cannot read block height, block hash or time. Executing a disallowed or impure
-instruction halts verification returning `false`, which invalidates the
-transaction rather than panicking. Loading code from a non-contract blob
-target is permitted but grants no access to contract state or calls. A
-predicate runs per predicate input, so repeated code/data and work affect size
-and gas. Use transaction maturity/expiration policy for supported time
-constraints; use a contract when mutable state, block context or an oracle is
+A predicate root owns its UTXO and verification is transaction-local. A
+predicate cannot read/write contract storage or call a contract, and it cannot
+read block height, block hash or time; [fuelvm-assembly.md](fuelvm-assembly.md)
+carries the authoritative predicate-legal opcode list. Executing a disallowed
+or impure instruction panics with `ContractInstructionNotAllowed`, which fails
+predicate verification and invalidates the transaction; the net effect for the
+spender matches returning `false`, but the diagnostic differs. Loading code
+from a non-contract blob target is permitted but grants no access to contract
+state or calls. A predicate runs per predicate input, so repeated code/data
+and work affect size and gas. Use transaction maturity/expiration policy for
+supported time constraints; use a contract — optionally with a script for atomic
+orchestration — when mutable state, block context, an oracle or a call is
 required.
+
+Choose a predicate only when every economically relevant dimension of the
+spend can be bound from the transaction and deterministic predicate data
+alone. Build that binding with the construction checklist in
+[transactions-and-wallets.md](transactions-and-wallets.md) and attack it with
+the adversarial checklist in [security-review.md](security-review.md).
 
 ## Use scripts for atomic orchestration
 
@@ -133,17 +131,14 @@ the program-type choice during review.
 
 ## Design for readable performance
 
-Make the ordinary architecture efficient without obscuring it:
+Choose the boundary that removes real work — rejecting malformed transactions
+before expensive policy work, reading authoritative state once per phase —
+rather than one that hides cost behind clever code, and keep
+checks-effects-interactions explicit while doing it. Centralize cross-package
+encodings in shared types and test vectors so every layer commits to one
+canonical form.
 
-- reject malformed transaction shape before expensive policy work;
-- read authoritative state once per phase and write once;
-- keep checks-effects-interactions explicit;
-- use one complete canonical commitment rather than a deep hash tree;
-- centralize cross-package encodings in shared types/test vectors;
-- keep fixed bounded loops readable unless profiling justifies unrolling;
-- isolate any asm or compiler-sensitive kernel behind a typed Sway interface
-  and retain a readable oracle.
-
-Use [performance.md](performance.md) for the measured evidence behind these
-defaults and [maximum-optimization.md](maximum-optimization.md) only for an
-explicit maximum-optimization request.
+Read [performance.md](performance.md) for the readable-first defaults and the
+measured evidence behind them, and
+[maximum-optimization.md](maximum-optimization.md) only for an explicit
+maximum-optimization request.
